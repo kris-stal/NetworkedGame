@@ -148,9 +148,6 @@ public class playerNetwork : NetworkBehaviour
         Vector3 force = InputKey * acceleration;
         rb.AddForce(force, ForceMode.Force);
 
-        // rb.AddForce(InputKey * acceleration, ForceMode.Force);
-        
-
         if (rb.linearVelocity.magnitude > maxSpeed) 
         {
             rb.linearVelocity = rb.linearVelocity.normalized * maxSpeed;
@@ -158,17 +155,49 @@ public class playerNetwork : NetworkBehaviour
         
         // Sync pos to clients
         SyncMovementClientRpc(transform.position);
+        SyncVelocityClientRpc(rb.linearVelocity);
     }
 
     [ServerRpc]
     private void RequestDecelerateServerRpc(ServerRpcParams rpcParams = default)
     {
-        Debug.Log("Applying force: " + InputKey * deceleration);
-        // Apply deceleration on server
-        rb.AddForce(rb.linearVelocity * -deceleration, ForceMode.Force);
-
-        // Sync pos to clients
+        // Only apply deceleration if we're not in a collision
+        if (rb.linearVelocity.magnitude > 0.1f)  // Small threshold to prevent jitter
+        {
+            rb.AddForce(rb.linearVelocity * -deceleration, ForceMode.Force);
+        }
+        
         SyncMovementClientRpc(transform.position);
+        SyncVelocityClientRpc(rb.linearVelocity);
+    }
+
+    // Add this method to handle collisions
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (!IsServer) return;
+        
+        if (collision.gameObject.CompareTag("Player") || collision.gameObject.CompareTag("Ball"))
+        {
+            // Get the other player's NetworkBehaviour component
+            playerNetwork otherPlayer = collision.gameObject.GetComponent<playerNetwork>();
+            
+            // Only apply force if we're colliding with another player
+            if (otherPlayer != null)
+            {
+                // Calculate relative velocity
+                Vector3 relativeVelocity = collision.relativeVelocity;
+                float forceMagnitude = relativeVelocity.magnitude;
+                Vector3 forceDirection = collision.contacts[0].normal;
+                
+                // Apply force to both objects in opposite directions
+                float forceMultiplier = 0.2f; // Adjust this value to control bounce strength
+                Vector3 force = forceDirection * forceMagnitude * forceMultiplier;
+                
+                // Apply opposite forces to each player
+                rb.AddForce(force, ForceMode.Impulse);
+                otherPlayer.rb.AddForce(-force, ForceMode.Impulse);
+            }
+        }
     }
 
 
@@ -184,12 +213,15 @@ public class playerNetwork : NetworkBehaviour
     [ClientRpc]
     private void SyncMovementClientRpc(Vector3 newPos, ClientRpcParams rpcParams = default)
     {
-        // Skip the pos update for owner
-        if (IsOwner) return;  
-
         Debug.Log("Received Position: " + newPos + ". ");
 
-        // Update pos for client
+        // Update pos for client 
         transform.position = newPos;
+    }
+
+    [ClientRpc]
+    private void SyncVelocityClientRpc(Vector3 newVelocity, ClientRpcParams rpcParams = default)
+    {
+        rb.linearVelocity = newVelocity;
     }
 }
