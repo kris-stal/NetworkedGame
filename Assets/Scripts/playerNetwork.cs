@@ -8,6 +8,7 @@ public class playerNetwork : NetworkBehaviour
     [SerializeField] private float maxSpeed = 20f;
     public Rigidbody rb;
     public Vector3 InputKey;
+    
 
 
     // Test for syncing variable value, randomly generated integer:
@@ -60,6 +61,7 @@ public class playerNetwork : NetworkBehaviour
         };
     }
 
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
@@ -78,22 +80,7 @@ public class playerNetwork : NetworkBehaviour
         // if NOT the local owner of this player object, return
         if (!IsOwner) return;    
 
-
         InputKey = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
-
-        // if local owner, allow for movement of this player
-        /*
-        Vector3 moveDir = new Vector3(0, 0, 0);
-
-        // Movement key binds
-        if (Input.GetKey(KeyCode.W)) moveDir.z = +1f;
-        if (Input.GetKey(KeyCode.A)) moveDir.x = -1f;
-        if (Input.GetKey(KeyCode.S)) moveDir.z = -1f;
-        if (Input.GetKey(KeyCode.D)) moveDir.x = +1f;
-
-        float moveSpeed = 3f;
-        transform.position += moveDir * moveSpeed * Time.deltaTime;
-        */ 
 
         // Press 'I' to generate new random number so can test sync between host and client:
         if (Input.GetKeyDown(KeyCode.I)) {
@@ -115,65 +102,46 @@ public class playerNetwork : NetworkBehaviour
         }
     }
 
-    void FixedUpdate() 
+    private void FixedUpdate() 
     {
         if (!IsOwner) return;
 
+        // Apply movement locally first for responsive input
         if (InputKey != Vector3.zero)
         {
-            // Request the server to apply acceleration and movement
+            // Local prediction
+            Vector3 force = InputKey * acceleration;
+            rb.AddForce(force, ForceMode.Force);
+
+            if (rb.linearVelocity.magnitude > maxSpeed) 
+            {
+                rb.linearVelocity = rb.linearVelocity.normalized * maxSpeed;
+            }
+
+            // Then send to server
             RequestAccelerateServerRpc(InputKey);
         }
         else 
         {
-            // Request the server to apply deceleration
+            // Local prediction for deceleration
+            if (rb.linearVelocity.magnitude > 0.1f)
+            {
+                rb.AddForce(rb.linearVelocity * -deceleration, ForceMode.Force);
+            }
+            
+            // Then send to server
             RequestDecelerateServerRpc();
         }
     }
 
-
-    // Server Rpc
-    // When client calls ServerRpc function, the server runs the function NOT the client
-    // Clients can use Server Remote Procedure Calls to ask for movement / actions.
-    [ServerRpc]
-    private void  TestServerRpc() 
-    {
-        Debug.Log("TestServerRpc " + OwnerClientId);
-    }
-
-    [ServerRpc]
-    private void RequestAccelerateServerRpc(Vector3 InputKey, ServerRpcParams rpcParams = default)
-    {
-        Debug.Log("Applying force: " + InputKey * acceleration);
-        Vector3 force = InputKey * acceleration;
-        rb.AddForce(force, ForceMode.Force);
-
-        if (rb.linearVelocity.magnitude > maxSpeed) 
-        {
-            rb.linearVelocity = rb.linearVelocity.normalized * maxSpeed;
-        }
-        
-        // Sync pos to clients
-        SyncMovementClientRpc(transform.position);
-        SyncVelocityClientRpc(rb.linearVelocity);
-    }
-
-    [ServerRpc]
-    private void RequestDecelerateServerRpc(ServerRpcParams rpcParams = default)
-    {
-        // Only apply deceleration if we're not in a collision
-        if (rb.linearVelocity.magnitude > 0.1f)  // Small threshold to prevent jitter
-        {
-            rb.AddForce(rb.linearVelocity * -deceleration, ForceMode.Force);
-        }
-        
-        SyncMovementClientRpc(transform.position);
-        SyncVelocityClientRpc(rb.linearVelocity);
-    }
-
-    // Add this method to handle collisions
     private void OnCollisionEnter(Collision collision)
     {
+        // Allow client-side collision response for immediate feedback
+        if (!IsServer && IsOwner)
+        {
+            HandleCollisionLocally(collision);
+        }
+        
         if (!IsServer) return;
         
         if (collision.gameObject.CompareTag("Player") || collision.gameObject.CompareTag("Ball"))
@@ -200,28 +168,105 @@ public class playerNetwork : NetworkBehaviour
         }
     }
 
+    private void HandleCollisionLocally(Collision collision)
+    {
+        if (collision.gameObject.CompareTag("Player") || collision.gameObject.CompareTag("Ball"))
+        {
+            Vector3 relativeVelocity = collision.relativeVelocity;
+            float forceMagnitude = relativeVelocity.magnitude;
+            Vector3 forceDirection = collision.contacts[0].normal;
+            
+            float forceMultiplier = 0.2f;
+            Vector3 force = forceDirection * forceMagnitude * forceMultiplier;
+            
+            // Apply local force for immediate feedback
+            rb.AddForce(force, ForceMode.Impulse);
+        }
+    }
+
+    // Server Rpc
+    // When client calls ServerRpc function, the server runs the function NOT the client
+    // Clients can use Server Remote Procedure Calls to ask for movement / actions.
+
+    // Testing ServerRpc
+    [ServerRpc]
+    private void  TestServerRpc() 
+    {
+        Debug.Log("TestServerRpc " + OwnerClientId);
+    }
+
+
+    // Asking for acceleration in movement
+    [ServerRpc]
+    private void RequestAccelerateServerRpc(Vector3 InputKey, ServerRpcParams rpcParams = default)
+    {
+        Debug.Log("Applying force: " + InputKey * acceleration);
+        // server is authoritative
+        Vector3 force = InputKey * acceleration;
+        rb.AddForce(force, ForceMode.Force);
+
+        if (rb.linearVelocity.magnitude > maxSpeed) 
+        {
+            rb.linearVelocity = rb.linearVelocity.normalized * maxSpeed;
+        }
+        
+        // Sync only to other clients, not back to the owner
+        var clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { OwnerClientId }
+            }
+        };
+        
+        SyncMovementClientRpc(transform.position, clientRpcParams);
+        SyncVelocityClientRpc(rb.linearVelocity, clientRpcParams);
+    }
+
+    // Asking for deceleration in movement
+    [ServerRpc]
+    private void RequestDecelerateServerRpc(ServerRpcParams rpcParams = default)
+    {
+        // Only apply deceleration if we're not in a collision
+        if (rb.linearVelocity.magnitude > 0.1f)  // Small threshold to prevent jitter
+        {
+            rb.AddForce(rb.linearVelocity * -deceleration, ForceMode.Force);
+        }
+        
+        SyncMovementClientRpc(transform.position);
+        SyncVelocityClientRpc(rb.linearVelocity);
+    }
 
     // Client Rpc
     // Used to be run from server to send messages to clients.
     // Clients cannot run this Rpc.
+
+    // Testing ClientRpc
     [ClientRpc]
     private void TestClientRpc()
     {
         Debug.Log("TestClientRpc " + OwnerClientId);
     }
 
+
+    // Syncing movement to clients
     [ClientRpc]
     private void SyncMovementClientRpc(Vector3 newPos, ClientRpcParams rpcParams = default)
     {
+        if (IsOwner) return;
         Debug.Log("Received Position: " + newPos + ". ");
 
         // Update pos for client 
         transform.position = newPos;
     }
 
+    // Syncing velocity to clients
     [ClientRpc]
     private void SyncVelocityClientRpc(Vector3 newVelocity, ClientRpcParams rpcParams = default)
     {
+        if (IsOwner) return;
+
+        // Update velocity for client
         rb.linearVelocity = newVelocity;
     }
 }

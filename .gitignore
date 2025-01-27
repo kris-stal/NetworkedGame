@@ -45,3 +45,5 @@ Assets/StreamingAssets/crashlytics-build.properties
 
 # Unity user-specific settings
 *.userprefs
+
+.codegpt
