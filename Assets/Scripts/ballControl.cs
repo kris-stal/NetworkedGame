@@ -1,11 +1,28 @@
-using Unity.VisualScripting;
 using UnityEngine;
+using Unity.Netcode;
 
-public class ballControl : MonoBehaviour
+public class ballControl : NetworkBehaviour
 {
     private Rigidbody rb;
 
     [SerializeField] float ballSpeed = 10.0f;
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        // if (!IsServer) return; // only server handles scoring
+        Debug.Log("Ball collision detected with: " + collision.gameObject.name + " (Tag: " + collision.gameObject.tag + ")");// Debug log to verify collision
+
+        if (collision.gameObject.CompareTag("RedGoal"))
+        {
+            Debug.Log("Red goal hit - Blue scores!"); // Debug log
+            gameManager.Instance.Score(false);  // false means Player 2 (Blue) scored
+        }
+        else if (collision.gameObject.CompareTag("BlueGoal"))
+        {
+            Debug.Log("Blue goal hit - Red scores!"); // Debug log
+            gameManager.Instance.Score(true);   // true means Player 1 (Red) scored
+        }
+    }
 
     void goBall(){
         float rand = Random.Range(0, 2);
@@ -39,21 +56,6 @@ public class ballControl : MonoBehaviour
         ResetBall();
         Invoke("goBall", 1);
     }
-
-    // void onCollisionEnter (Collision coll) {
-    //     if (coll.collider.CompareTag("Player")) {
-    //         Vector3 vel = rb.linearVelocity;
-    //         vel.x = rb.linearVelocity.x;
-    //         vel.z = (rb.linearVelocity.z / 2.0f) + (coll.collider.attachedRigidbody.linearVelocity.z / 3.0f);
-    //         rb.linearVelocity = vel;
-    //     }
-    //     if (coll.collider.CompareTag("Wall")) {
-    //         Vector3 vel = rb.linearVelocity;
-    //         vel.x = rb.linearVelocity.x;
-    //         vel.z = (rb.linearVelocity.z / 2.0f) + (coll.collider.attachedRigidbody.linearVelocity.z / 3.0f);
-    //         rb.linearVelocity = vel;
-    //     }
-    // }
 
     // Update is called once per frame
     void Update()
