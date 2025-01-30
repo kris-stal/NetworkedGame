@@ -6,8 +6,8 @@ public class playerNetwork : NetworkBehaviour
     [SerializeField] private float acceleration = 5f;
     [SerializeField] private float deceleration = 5f;
     [SerializeField] private float maxSpeed = 20f;
-    public Rigidbody rb;
-    public Vector3 InputKey;
+    public Rigidbody rb; // player rigidbody
+    public Vector3 InputKey; // input keys
     
 
 
@@ -68,10 +68,11 @@ public class playerNetwork : NetworkBehaviour
 
     }
 
+    // awake is called when script is first made
     private void Awake() 
     {
-        if (!IsOwner) return;
-        rb = GetComponent<Rigidbody>();
+        if (!IsOwner) return; // if not owner of player object return
+        rb = GetComponent<Rigidbody>(); // get rigidbody of this player object
     }
 
     // Update is called once per frame
@@ -134,6 +135,7 @@ public class playerNetwork : NetworkBehaviour
         }
     }
 
+    // Collision check
     private void OnCollisionEnter(Collision collision)
     {
         // Allow client-side collision response for immediate feedback
@@ -168,6 +170,7 @@ public class playerNetwork : NetworkBehaviour
         }
     }
 
+    // Client-side collision prediction
     private void HandleCollisionLocally(Collision collision)
     {
         if (collision.gameObject.CompareTag("Player") || collision.gameObject.CompareTag("Ball"))
@@ -237,6 +240,7 @@ public class playerNetwork : NetworkBehaviour
         SyncVelocityClientRpc(rb.linearVelocity);
     }
 
+
     // Client Rpc
     // Used to be run from server to send messages to clients.
     // Clients cannot run this Rpc.
@@ -254,7 +258,7 @@ public class playerNetwork : NetworkBehaviour
     private void SyncMovementClientRpc(Vector3 newPos, ClientRpcParams rpcParams = default)
     {
         if (IsOwner) return;
-        Debug.Log("Received Position: " + newPos + ". ");
+        // Debug.Log("Received Position: " + newPos + ". ");
 
         // Update pos for client 
         transform.position = newPos;

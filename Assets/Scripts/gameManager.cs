@@ -1,6 +1,6 @@
 using UnityEngine;
 using Unity.Netcode;
-using Unity.VisualScripting;
+using System.Collections.Generic;
 
 public class gameManager : NetworkBehaviour
 {
@@ -19,6 +19,9 @@ public class gameManager : NetworkBehaviour
     );
 
     GameObject theBall;
+    private List<GameObject> playerObjects = new List<GameObject>();
+
+    private List<Vector3> playerSpawnPos = new List<Vector3>();
 
 
     // Singleton Pattern for easy access to the gameManager from other scripts and to prevent duplicates
@@ -43,13 +46,37 @@ public class gameManager : NetworkBehaviour
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
+        // find the ball
         theBall = GameObject.FindGameObjectWithTag("Ball");
+
+        playerSpawnPos.Add(new Vector3(-5, 1, 0));
+        playerSpawnPos.Add(new Vector3(5, 1, 0));
+        Debug.Log(playerSpawnPos.Count);
+        
+        // find all players
+        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        Debug.Log($"Found {players.Length} players");
+
+        // add all players to list
+        foreach (GameObject player in players)
+        {
+            playerObjects.Add(player);
+            Debug.Log($"Added player with NetworkObjectId: {player.GetComponent<NetworkObject>().NetworkObjectId}");
+        }
     }
 
     // Update is called once per frame
     void Update()
     {
         
+    }
+
+
+    public void findPlayerCount()
+    {
+        int playerCount = playerObjects.Count;
+
+
     }
 
     public void Score(bool isPlayer1Scored) 
@@ -70,6 +97,7 @@ public class gameManager : NetworkBehaviour
 
         // reset ball pos
         ResetBallServerRpc();
+        ResetPlayerServerRpc();
     }
 
 
@@ -96,5 +124,31 @@ public class gameManager : NetworkBehaviour
                     ForceMode.Impulse);
             }
         }
+    }
+
+    [ServerRpc]
+    private void ResetPlayerServerRpc()
+    {
+        if (!IsServer) return;
+
+        int playerCount = playerObjects.Count;
+        Debug.Log($"Resetting {playerCount} players");
+
+        for (int i = 0; i < playerCount; i++)
+        {
+            if (playerObjects[i] != null)
+            {
+                // Reset position and velocity
+                playerObjects[i].transform.position = playerSpawnPos[i];
+                if (playerObjects[i].TryGetComponent<Rigidbody>(out Rigidbody rb))
+                {
+                    rb.linearVelocity = Vector3.zero;
+                }
+
+                Debug.Log($"Reset player {i} to position {playerSpawnPos[i]}");
+
+            }
+        }
+
     }
 }
