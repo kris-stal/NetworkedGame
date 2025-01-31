@@ -3,13 +3,24 @@ using Unity.Netcode;
 
 public class ballControl : NetworkBehaviour
 {
-    private Rigidbody rb;
+    private Rigidbody rb; // rigidbody
 
-    [SerializeField] float ballSpeed = 10.0f;
+    [SerializeField] float ballSpeed = 10.0f; // base movement speed of ball
 
+    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void Start()
+    {
+        rb = GetComponent<Rigidbody>(); // get ball rigidbody
+        Invoke("goBall", 2);
+    }
+
+
+    // Collision handling
     private void OnCollisionEnter(Collision collision)
     {
-        // if (!IsServer) return; // only server handles scoring
+        if (!IsServer) return;
+        // only server handles scoring
+
         Debug.Log("Ball collision detected with: " + collision.gameObject.name + " (Tag: " + collision.gameObject.tag + ")");// Debug log to verify collision
 
         if (collision.gameObject.CompareTag("RedGoal"))
@@ -23,7 +34,8 @@ public class ballControl : NetworkBehaviour
             gameManager.Instance.Score(true);   // true means Player 1 (Red) scored
         }
     }
-
+    
+    // Move ball in random direction.
     void goBall(){
         float rand = Random.Range(0, 2);
         var vel = rb.linearVelocity;
@@ -38,14 +50,6 @@ public class ballControl : NetworkBehaviour
             rb.linearVelocity = vel;
         }
     }
-    
-
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
-    {
-        rb = GetComponent<Rigidbody>();
-        Invoke("goBall", 2);
-    }
 
     void ResetBall() {
         rb.linearVelocity = Vector3.zero;
@@ -55,11 +59,5 @@ public class ballControl : NetworkBehaviour
     void RestartGame() {
         ResetBall();
         Invoke("goBall", 1);
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
     }
 }

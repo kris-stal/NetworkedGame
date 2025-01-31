@@ -2,6 +2,11 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using TMPro;
+using Unity.Services.Core;
+using Unity.Services.Authentication;
+using Unity.Services.Lobbies;
+using Unity.Services.Lobbies.Models;
 
 public class lobbyUI : NetworkBehaviour
 {
@@ -9,7 +14,8 @@ public class lobbyUI : NetworkBehaviour
     [SerializeField] private Button startGameButton;
     [SerializeField] private Button playerReadyButton;
     [SerializeField] private Transform playerListParent;  // Parent object for player list items
-    [SerializeField] private TextMesh playerCountText;
+    [SerializeField] private GameObject playerListItemPrefab;  // Player item prefab
+    [SerializeField] private TextMeshProUGUI playerCountText;
 
     // Network Variables
     private NetworkVariable<int> playerCount = new NetworkVariable<int>(0, 
@@ -19,7 +25,7 @@ public class lobbyUI : NetworkBehaviour
 
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    private void Start()
     {
         // Only host should see start button
         startGameButton.gameObject.SetActive(IsHost);
@@ -27,14 +33,11 @@ public class lobbyUI : NetworkBehaviour
         // Subscribe to player join/leave events
         NetworkManager.Singleton.OnClientConnectedCallback += HandlePlayerJoined;
         NetworkManager.Singleton.OnClientDisconnectCallback += HandlePlayerLeft;
+
+        // Update UI for host (first to join as they start the lobby)
+        UpdatePlayerList();
     }
 
-
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
 
     private void HandlePlayerJoined(ulong clientId)
     {
@@ -60,23 +63,47 @@ public class lobbyUI : NetworkBehaviour
         UpdatePlayerList();
     }
 
-    
     private void UpdatePlayerList()
     {
+        // Clear existing list
 
+        foreach (Transform child in playerListParent)
+        {
+            Destroy(child.gameObject);
+        }
+
+        // Get all players and create list items
+        foreach (var client in NetworkManager.Singleton.ConnectedClients)
+        {
+            // Instatiate new list item
+            GameObject newListItem = Instantiate(playerListItemPrefab, playerListParent);
+
+            // Get NetworkObjectId
+            ulong playerId = client.Key;
+
+            if (client.Key == NetworkManager.Singleton.LocalClientId && IsHost)
+            {
+                // Update list to add host
+                newListItem.GetComponentInChildren<TextMeshProUGUI>().text = $"Host {playerId}";
+            }
+            else 
+            {
+                // Update list to add player
+                newListItem.GetComponentInChildren<TextMeshProUGUI>().text = $"Player {playerId}";
+            }
+        }
     }
 
-
     private void StartGame()
-    {
-
+    {   
+        SceneManager.LoadScene("BallArena");
     }
 
     private void UpdateUI()
     {
-
+        UpdatePlayerList();
+        
     }
-
 
     // OnDestroy is called when this script is destroyed for cleanup
     // Overriding NetworkBehaviour's OnDestroy, must be public as base method is public and cannot restrict it more when overriding.

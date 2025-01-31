@@ -9,6 +9,9 @@ EditorBuildSettings:
     path: Assets/Scenes/MainMenu.unity
     guid: f5fe1ebac0764854097ca81670cfe5c1
   - enabled: 1
+    path: Assets/Scenes/LobbyMenu.unity
+    guid: 881fec7ff4748634a9a0e30c467ab07d
+  - enabled: 1
     path: Assets/Scenes/BallArena.unity
     guid: 99c9720ab356a0642a771bea13969a05
   m_configObjects:

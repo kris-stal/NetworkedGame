@@ -2,6 +2,7 @@ using UnityEngine;
 using Unity.Netcode;
 using System.Collections.Generic;
 
+// Main Game Manager script for handling game logic
 public class gameManager : NetworkBehaviour
 {
 
@@ -18,10 +19,9 @@ public class gameManager : NetworkBehaviour
         NetworkVariableWritePermission.Server 
     );
 
-    GameObject theBall;
-    private List<GameObject> playerObjects = new List<GameObject>();
-
-    private List<Vector3> playerSpawnPos = new List<Vector3>();
+    GameObject theBall; // Get ball Game Object
+    private List<GameObject> playerObjects = new List<GameObject>(); // List of player Game Objects
+    private List<Vector3> playerSpawnPos = new List<Vector3>(); // List of spawn positions for players
 
 
     // Singleton Pattern for easy access to the gameManager from other scripts and to prevent duplicates
@@ -43,21 +43,21 @@ public class gameManager : NetworkBehaviour
         }
     }
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    // Start is called once before the first execution of Update after the MonoBehaviour is created, after Awake
     void Start()
     {
-        // find the ball
+        // find the ball Game Object
         theBall = GameObject.FindGameObjectWithTag("Ball");
 
-        playerSpawnPos.Add(new Vector3(-5, 1, 0));
-        playerSpawnPos.Add(new Vector3(5, 1, 0));
-        Debug.Log(playerSpawnPos.Count);
+        playerSpawnPos.Add(new Vector3(-5, 1, 0)); // spawn pos 1
+        playerSpawnPos.Add(new Vector3(5, 1, 0)); // spawn pos 2
+        Debug.Log(playerSpawnPos.Count); // Output num of spawn pos for testing
         
         // find all players
         GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
         Debug.Log($"Found {players.Length} players");
 
-        // add all players to list
+        // add all players to list of Player Objects
         foreach (GameObject player in players)
         {
             playerObjects.Add(player);
@@ -65,20 +65,12 @@ public class gameManager : NetworkBehaviour
         }
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
-
-
     public void findPlayerCount()
     {
-        int playerCount = playerObjects.Count;
-
-
+        int playerCount = playerObjects.Count; // int of num players in list of Player Objects
     }
 
+    // Score Handling
     public void Score(bool isPlayer1Scored) 
     {
         if (!IsServer) return; // Only server can update score
@@ -100,7 +92,7 @@ public class gameManager : NetworkBehaviour
         ResetPlayerServerRpc();
     }
 
-
+    // Getting player scores
     public int GetPlayer1Score()
     {
         return playerScore1.Value;
@@ -111,6 +103,7 @@ public class gameManager : NetworkBehaviour
         return playerScore2.Value;
     }
 
+    // Reset Ball
     [ServerRpc]
     private void ResetBallServerRpc()
     {
@@ -126,6 +119,7 @@ public class gameManager : NetworkBehaviour
         }
     }
 
+    // Reset Player
     [ServerRpc]
     private void ResetPlayerServerRpc()
     {
@@ -149,6 +143,5 @@ public class gameManager : NetworkBehaviour
 
             }
         }
-
     }
 }

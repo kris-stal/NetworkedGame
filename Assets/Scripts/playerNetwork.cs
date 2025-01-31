@@ -1,6 +1,7 @@
 using Unity.Netcode;
 using UnityEngine;
 
+// Main script for player objects
 public class playerNetwork : NetworkBehaviour
 {
     [SerializeField] private float acceleration = 5f;
@@ -10,6 +11,12 @@ public class playerNetwork : NetworkBehaviour
     public Vector3 InputKey; // input keys
     
 
+    // awake is called when script is first made
+    private void Awake() 
+    {
+        if (!IsOwner) return; // if not owner of player object return
+        rb = GetComponent<Rigidbody>(); // get rigidbody of this player object
+    }
 
     // Test for syncing variable value, randomly generated integer:
     private NetworkVariable<int> randomNumber = new NetworkVariable<int>(1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
@@ -61,19 +68,6 @@ public class playerNetwork : NetworkBehaviour
         };
     }
 
-
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
-    {
-
-    }
-
-    // awake is called when script is first made
-    private void Awake() 
-    {
-        if (!IsOwner) return; // if not owner of player object return
-        rb = GetComponent<Rigidbody>(); // get rigidbody of this player object
-    }
 
     // Update is called once per frame
     private void Update()
@@ -203,7 +197,7 @@ public class playerNetwork : NetworkBehaviour
     [ServerRpc]
     private void RequestAccelerateServerRpc(Vector3 InputKey, ServerRpcParams rpcParams = default)
     {
-        Debug.Log("Applying force: " + InputKey * acceleration);
+
         // server is authoritative
         Vector3 force = InputKey * acceleration;
         rb.AddForce(force, ForceMode.Force);
