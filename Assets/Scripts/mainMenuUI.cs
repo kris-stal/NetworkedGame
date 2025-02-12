@@ -8,11 +8,13 @@ using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using TMPro;
 
 public class mainMenuUI : MonoBehaviour
 {
     [SerializeField] private Button startHostButton;
     [SerializeField] private Button startClientButton;
+    [SerializeField] private TextMeshProUGUI lobbyNameUI;
 
     private Lobby hostLobby;
     private float heartbeatTimer;
@@ -23,8 +25,12 @@ public class mainMenuUI : MonoBehaviour
         startHostButton.onClick.AddListener(() => {
             Debug.Log("HOST");
             NetworkManager.Singleton.StartHost();
+            
+            startHostButton.gameObject.SetActive(false);
+            startClientButton.gameObject.SetActive(false);
+            lobbyNameUI.gameObject.SetActive(true);
+
             CreateLobby();
-            Hide();
         });
 
         startClientButton.onClick.AddListener(() => {
@@ -74,7 +80,7 @@ public class mainMenuUI : MonoBehaviour
         HandleLobbyHeartbeat();
     }
 
-    private async void HandleLobbyHeartbeat()
+    private async void HandleLobbyHeartbeat() // Heartbeat function to keep server alive - by default the lobby service automatically shuts down a lobby for 30 seconds of inactivity
     {
         if (hostLobby != null)
         {
@@ -90,10 +96,11 @@ public class mainMenuUI : MonoBehaviour
     }
 
     
-    private async void CreateLobby()
+    private async void CreateLobby() // Creating the lobby
     {
         try {
             string lobbyName = "My Lobby";
+            
             int maxPlayers = 4;
             CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
             {
@@ -102,6 +109,7 @@ public class mainMenuUI : MonoBehaviour
             };
 
             Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
+            lobbyNameUI.text = lobby.Name;
 
             hostLobby = lobby;
             PrintPlayers(hostLobby);
@@ -113,7 +121,7 @@ public class mainMenuUI : MonoBehaviour
          }
     }
 
-    private async void ListLobbies() 
+    private async void ListLobbies() // Viewing lobby
     {
         try {  
             QueryLobbiesOptions queryLobbiesOptions = new QueryLobbiesOptions 
@@ -142,7 +150,7 @@ public class mainMenuUI : MonoBehaviour
         }
     }
 
-    private async void JoinLobbyByCode(string lobbyCode)
+    private async void JoinLobbyByCode(string lobbyCode) // Joining lobby via code input
     {   
         try {  
             JoinLobbyByCodeOptions joinLobbyByCodeOptions = new JoinLobbyByCodeOptions {
@@ -162,7 +170,7 @@ public class mainMenuUI : MonoBehaviour
         }
     }
 
-    private async void JoinLobbyByQuickJoin()
+    private async void JoinLobbyByQuickJoin() // Joining lobby via quick join and the filters set
     {
         try {  
             await LobbyService.Instance.QuickJoinLobbyAsync();
