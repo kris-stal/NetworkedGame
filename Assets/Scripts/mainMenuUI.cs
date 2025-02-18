@@ -9,57 +9,74 @@ using Unity.Services.Lobbies.Models;
 using System.Collections.Generic;
 using TMPro;
 using Unity.VisualScripting;
+using System.Threading.Tasks;
 
 public class mainMenuUI : MonoBehaviour
 {
     [SerializeField] private Button startHostButton;
     [SerializeField] private Button startClientButton;
+    [SerializeField] private Button startGameButton;
+    [SerializeField] private Button leaveLobbyButton;
     [SerializeField] private TextMeshProUGUI lobbyNameUI;
     [SerializeField] private TextMeshProUGUI lobbyCodeUI;
     [SerializeField] private TMPro.TMP_InputField codeInputBox;
+    [SerializeField] private GameObject lobbyUI;
+    [SerializeField] private GameObject menuUI;
 
     private Lobby hostLobby;
+    private Lobby joinedLobby;
     private float heartbeatTimer;
+    private float lobbyUpdateTimer;
     private string playerName;
-
     private string lobbyCode;
 
 
+    // Ran when script is created - before Start
     private void Awake() {
         startHostButton.onClick.AddListener(() => { // On host button click
             Debug.Log("HOST");
             NetworkManager.Singleton.StartHost(); // Start the host via NetworkManager
             
+            CreateLobby(); // Create the lobby
             // Hide main menu UI
-            startClientButton.gameObject.SetActive(false);
-            startHostButton.gameObject.SetActive(false);
-            codeInputBox.gameObject.SetActive(false);
+            menuUI.gameObject.SetActive(false);
 
             // Show lobby UI
-            lobbyNameUI.gameObject.SetActive(true);
-            lobbyCodeUI.gameObject.SetActive(true);
-
-            CreateLobby();
+            lobbyUI.gameObject.SetActive(true);
         });
 
         startClientButton.onClick.AddListener(() => { // On client button click
             Debug.Log("CLIENT");
             NetworkManager.Singleton.StartClient(); // Start as client via NetworkManager
 
-            // ListLobbies();
-
             lobbyCode = codeInputBox.text; // get code input
             JoinLobbyByCode(lobbyCode); // Join lobby via the code input
 
             // Hide main menu UI
-            startClientButton.gameObject.SetActive(false);
-            startHostButton.gameObject.SetActive(false);
-            codeInputBox.gameObject.SetActive(false);
+            menuUI.gameObject.SetActive(false);
 
             // Show lobby UI
-            lobbyNameUI.gameObject.SetActive(true);
-            lobbyCodeUI.gameObject.SetActive(true);
+            lobbyUI.gameObject.SetActive(true);
+        });
 
+        
+        startGameButton.onClick.AddListener(() => { // On start game button click
+            Debug.Log("STARTING GAME");
+
+
+        });
+
+        leaveLobbyButton.onClick.AddListener(() => { // On leave lobby button click
+            
+            // Remove player from lobby
+            LeaveLobby();
+            Debug.Log("LEFT LOBBY");
+
+            // Show main menu UI
+            menuUI.gameObject.SetActive(true);
+
+            //. Hide Lobby UI
+            lobbyUI.gameObject.SetActive(false);
         });
     }
 
@@ -72,7 +89,7 @@ public class mainMenuUI : MonoBehaviour
     }
 
 
-    // Start is called before first frame update
+    // Start is called before first frame update, after Awake
     private async void Start()
     {   
         // Subscribe to the OnClientConnectedCallback event
@@ -80,70 +97,97 @@ public class mainMenuUI : MonoBehaviour
         //In this case, when a client connects (including the host), HandleClientConnected will be called
         // NetworkManager.Singleton.OnClientConnectedCallback += HandleClientConnected;
 
-        await UnityServices.InitializeAsync();
+        await UnityServices.InitializeAsync(); // Initalize Unity Authentication
 
-        AuthenticationService.Instance.SignedIn += () => 
+        AuthenticationService.Instance.SignedIn += () => // Sign in
         {
             Debug.Log("Signed in" + AuthenticationService.Instance.PlayerId);
         };
-        await AuthenticationService.Instance.SignInAnonymouslyAsync();
 
-        playerName = "kris" + UnityEngine.Random.Range(10, 99);
+        await AuthenticationService.Instance.SignInAnonymouslyAsync(); // Sign in anonymously
+        playerName = "kris" + UnityEngine.Random.Range(10, 99); // Pick name randomly
         Debug.Log(playerName);
     }
 
+    // Update is ran every frame
     private void Update()
     {
-        HandleLobbyHeartbeat();
+        HandleLobbyHeartbeat(); // 
     }
 
-    private async void HandleLobbyHeartbeat() // Heartbeat function to keep server alive - by default the lobby service automatically shuts down a lobby for 30 seconds of inactivity
+    // Heartbeat function to keep server alive - by default the lobby service automatically shuts down a lobby for 30 seconds of inactivity
+    private async void HandleLobbyHeartbeat() 
     {
-        if (hostLobby != null)
+        if (hostLobby != null) // If there is a lobby
         {
-            heartbeatTimer -= Time.deltaTime;
-            if (heartbeatTimer < 0f) 
+            heartbeatTimer -= Time.deltaTime; // timer goes down in time
+            if (heartbeatTimer < 0f) // when timer reaches 0
             {   
-                float heartbeatTimerMax = 15;
-                heartbeatTimer  = heartbeatTimerMax;
+                float heartbeatTimerMax = 15; // set max time for timer
+                heartbeatTimer  = heartbeatTimerMax; // reset timer
 
-                await LobbyService.Instance.SendHeartbeatPingAsync(hostLobby.Id);
+                await LobbyService.Instance.SendHeartbeatPingAsync(hostLobby.Id); // send heartbeat to lobbyservice
+            }
+        }
+    }
+
+
+    // Update function for clients
+    private async void HandleLobbyPollForUpdates() 
+    {
+        if (joinedLobby != null) // If there is a lobby that client is connected to
+        {
+            lobbyUpdateTimer -= Time.deltaTime; // timer goes down in time
+            if (lobbyUpdateTimer < 0f) // when timer reaches 0
+            {   
+                float lobbyUpdateTimerMax = 1.1f; // set max time for timer
+                lobbyUpdateTimer  = lobbyUpdateTimerMax; // reset timer
+
+                Lobby lobby = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id); // update the lobby connected to
+                joinedLobby = lobby; // set joined lobby as this currently connected lobby
             }
         }
     }
 
     
-    private async void CreateLobby() // Creating the lobby
+    // Creating the lobby
+    private async void CreateLobby() 
     {
         try {
             string lobbyName = playerName + "'s Lobby";
-            
             int maxPlayers = 4;
-            CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
+
+            CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions // Create new options for lobby
             {
-                IsPrivate = false,
-                Player = GetPlayer()
+                IsPrivate = false, // Public game, no code required
+                Player = GetPlayer() // Get host player
             };
 
-            Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
-            lobbyNameUI.text = lobby.Name;
+            Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions); // Create the lobby instance with the lobby options
 
             hostLobby = lobby;
 
+            // Update UI
+            lobbyNameUI.text = lobby.Name; 
             lobbyCodeUI.text = ("Code: " + lobby.LobbyCode);
+
+            // Output lobby details
+            Debug.Log("Created lobby! " + lobby.Name + " " + lobby.MaxPlayers + " " + lobby.Id + " " + lobby.LobbyCode);
+
+            // Output players
             PrintPlayers(hostLobby);
 
-            Debug.Log("Created lobby! " + lobby.Name + " " + lobby.MaxPlayers + " " + lobby.Id + " " + lobby.LobbyCode);
          } catch (LobbyServiceException e) 
          {
             Debug.Log(e);
          }
     }
 
-    private async void ListLobbies() // Viewing lobby
+    // Listing lobbies
+    private async void ListLobbies()
     {
         try {  
-            QueryLobbiesOptions queryLobbiesOptions = new QueryLobbiesOptions 
+            QueryLobbiesOptions queryLobbiesOptions = new QueryLobbiesOptions // Create new options for search
             {
                 Count = 25, // Show 25 lobbies
                 Filters = new List<QueryFilter> // New filters
@@ -156,8 +200,10 @@ public class mainMenuUI : MonoBehaviour
                 }
             };
             
-            QueryResponse queryResponse = await LobbyService.Instance.QueryLobbiesAsync(queryLobbiesOptions);
+            QueryResponse queryResponse = await LobbyService.Instance.QueryLobbiesAsync(queryLobbiesOptions); // create the search
 
+
+            // Output results of search
             Debug.Log("Lobbies found :" + queryResponse.Results.Count);
             foreach (Lobby lobby in queryResponse.Results)
                 {
@@ -169,18 +215,25 @@ public class mainMenuUI : MonoBehaviour
         }
     }
 
-    private async void JoinLobbyByCode(string lobbyCode) // Joining lobby via code input
+    // Joining lobby via code input
+    private async void JoinLobbyByCode(string lobbyCode) 
     {   
         try {  
-            JoinLobbyByCodeOptions joinLobbyByCodeOptions = new JoinLobbyByCodeOptions {
-                Player = GetPlayer()
+            JoinLobbyByCodeOptions joinLobbyByCodeOptions = new JoinLobbyByCodeOptions { // Create new options for joining
+                Player = GetPlayer() // Get player
             };
 
             // QueryResponse queryResponse = await LobbyService.Instance.QueryLobbiesAsync();
-            Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByCodeAsync(lobbyCode, joinLobbyByCodeOptions);
+            Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByCodeAsync(lobbyCode, joinLobbyByCodeOptions); // Joined lobby
 
+            // Output that joined lobby
             Debug.Log ("Joined lobby with code" + lobbyCode);
 
+            // Update UI
+            lobbyNameUI.text = joinedLobby.Name; 
+            lobbyCodeUI.text = ("Code: " + joinedLobby.LobbyCode);
+
+            // Output player count
             PrintPlayers(joinedLobby);
 
         } catch (LobbyServiceException e)
@@ -189,10 +242,12 @@ public class mainMenuUI : MonoBehaviour
         }
     }
 
-    private async void JoinLobbyByQuickJoin() // Joining lobby via quick join and the filters set
+
+    // Joining lobby via quick join and the filters set
+    private async void JoinLobbyByQuickJoin() 
     {
         try {  
-            await LobbyService.Instance.QuickJoinLobbyAsync();
+            await LobbyService.Instance.QuickJoinLobbyAsync(); // Start quickjoin
         
         } catch (LobbyServiceException e)
         {
@@ -200,6 +255,7 @@ public class mainMenuUI : MonoBehaviour
         }
     }
 
+    // Get player name
     private Player GetPlayer() 
     {
         return new Player {
@@ -210,6 +266,15 @@ public class mainMenuUI : MonoBehaviour
             };
     }
 
+
+
+    // Output players for client (joinedLobby)
+    private void PrintPlayers()
+    {
+        PrintPlayers(joinedLobby);
+    }
+
+    // Output players in lobby
     private void PrintPlayers(Lobby lobby)
     {
         Debug.Log ("Players in lobby " + lobby.Name);
@@ -220,6 +285,17 @@ public class mainMenuUI : MonoBehaviour
     }
 
 
+    // Leaving lobby
+    // Unity handles host migration automatically
+    private async void LeaveLobby()
+    {
+        try {
+            await LobbyService.Instance.RemovePlayerAsync(joinedLobby.Id, AuthenticationService.Instance.PlayerId); // Remote player from joinedLobby 
+        } catch (LobbyServiceException e) 
+        {
+            Debug.Log(e);
+        }
+    }
 
     // OnDestroy is called when this script is destroyed for cleanup
     void OnDestroy()
