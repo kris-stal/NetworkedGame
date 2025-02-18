@@ -6,45 +6,62 @@ using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
-using System.Threading.Tasks;
 using System.Collections.Generic;
 using TMPro;
+using Unity.VisualScripting;
 
 public class mainMenuUI : MonoBehaviour
 {
     [SerializeField] private Button startHostButton;
     [SerializeField] private Button startClientButton;
     [SerializeField] private TextMeshProUGUI lobbyNameUI;
+    [SerializeField] private TextMeshProUGUI lobbyCodeUI;
+    [SerializeField] private TMPro.TMP_InputField codeInputBox;
 
     private Lobby hostLobby;
     private float heartbeatTimer;
     private string playerName;
 
+    private string lobbyCode;
+
 
     private void Awake() {
-        startHostButton.onClick.AddListener(() => {
+        startHostButton.onClick.AddListener(() => { // On host button click
             Debug.Log("HOST");
-            NetworkManager.Singleton.StartHost();
+            NetworkManager.Singleton.StartHost(); // Start the host via NetworkManager
             
-            startHostButton.gameObject.SetActive(false);
+            // Hide main menu UI
             startClientButton.gameObject.SetActive(false);
+            startHostButton.gameObject.SetActive(false);
+            codeInputBox.gameObject.SetActive(false);
+
+            // Show lobby UI
             lobbyNameUI.gameObject.SetActive(true);
+            lobbyCodeUI.gameObject.SetActive(true);
 
             CreateLobby();
         });
 
-        startClientButton.onClick.AddListener(() => {
+        startClientButton.onClick.AddListener(() => { // On client button click
             Debug.Log("CLIENT");
-            NetworkManager.Singleton.StartClient();
-            ListLobbies();
-            Hide();
+            NetworkManager.Singleton.StartClient(); // Start as client via NetworkManager
+
+            // ListLobbies();
+
+            lobbyCode = codeInputBox.text; // get code input
+            JoinLobbyByCode(lobbyCode); // Join lobby via the code input
+
+            // Hide main menu UI
+            startClientButton.gameObject.SetActive(false);
+            startHostButton.gameObject.SetActive(false);
+            codeInputBox.gameObject.SetActive(false);
+
+            // Show lobby UI
+            lobbyNameUI.gameObject.SetActive(true);
+            lobbyCodeUI.gameObject.SetActive(true);
+
         });
     }
-
-    private void Hide() {
-        gameObject.SetActive(false);
-    }
-
 
     // Method called when a client connects to the network
     // The clientId parameter tells us which client connected
@@ -99,7 +116,7 @@ public class mainMenuUI : MonoBehaviour
     private async void CreateLobby() // Creating the lobby
     {
         try {
-            string lobbyName = "My Lobby";
+            string lobbyName = playerName + "'s Lobby";
             
             int maxPlayers = 4;
             CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
@@ -112,6 +129,8 @@ public class mainMenuUI : MonoBehaviour
             lobbyNameUI.text = lobby.Name;
 
             hostLobby = lobby;
+
+            lobbyCodeUI.text = ("Code: " + lobby.LobbyCode);
             PrintPlayers(hostLobby);
 
             Debug.Log("Created lobby! " + lobby.Name + " " + lobby.MaxPlayers + " " + lobby.Id + " " + lobby.LobbyCode);
@@ -126,14 +145,14 @@ public class mainMenuUI : MonoBehaviour
         try {  
             QueryLobbiesOptions queryLobbiesOptions = new QueryLobbiesOptions 
             {
-                Count = 25,
-                Filters = new List<QueryFilter> 
+                Count = 25, // Show 25 lobbies
+                Filters = new List<QueryFilter> // New filters
                 {
                     new QueryFilter(QueryFilter.FieldOptions.AvailableSlots, "0", QueryFilter.OpOptions.GT) // query filter to see lobbies will available slots > 0 
                 },
-                Order = new List<QueryOrder> 
+                Order = new List<QueryOrder> // New order
                 {
-                    new QueryOrder(false, QueryOrder.FieldOptions.Created)
+                    new QueryOrder(false, QueryOrder.FieldOptions.Created) // ascending, by time created
                 }
             };
             
