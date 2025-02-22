@@ -241,7 +241,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 171473137}
-  m_Material: {fileID: 13400000, guid: e83d6fca300ed8f42a92bc1046ffd661, type: 2}
+  m_Material: {fileID: 13400000, guid: d7385612484ac074596f058484ec4e61, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -793,7 +793,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 400203921}
-  m_Material: {fileID: 13400000, guid: e83d6fca300ed8f42a92bc1046ffd661, type: 2}
+  m_Material: {fileID: 13400000, guid: d7385612484ac074596f058484ec4e61, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -1121,7 +1121,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 463726930}
-  m_Material: {fileID: 13400000, guid: e83d6fca300ed8f42a92bc1046ffd661, type: 2}
+  m_Material: {fileID: 13400000, guid: d7385612484ac074596f058484ec4e61, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -1266,7 +1266,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 747885989}
-  m_Material: {fileID: 13400000, guid: e83d6fca300ed8f42a92bc1046ffd661, type: 2}
+  m_Material: {fileID: 13400000, guid: d7385612484ac074596f058484ec4e61, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -1429,7 +1429,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 798188260}
-  m_Material: {fileID: 13400000, guid: e83d6fca300ed8f42a92bc1046ffd661, type: 2}
+  m_Material: {fileID: 13400000, guid: d7385612484ac074596f058484ec4e61, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -1587,7 +1587,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 844734528}
-  m_Material: {fileID: 13400000, guid: e83d6fca300ed8f42a92bc1046ffd661, type: 2}
+  m_Material: {fileID: 13400000, guid: d7385612484ac074596f058484ec4e61, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -1938,7 +1938,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963529117}
-  m_Material: {fileID: 13400000, guid: e83d6fca300ed8f42a92bc1046ffd661, type: 2}
+  m_Material: {fileID: 13400000, guid: d7385612484ac074596f058484ec4e61, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -2111,6 +2111,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1421247903}
+  - component: {fileID: 1421247905}
   - component: {fileID: 1421247904}
   m_Layer: 0
   m_Name: ScoreUI
@@ -2150,6 +2151,31 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   player1ScoreText: {fileID: 229555123}
   player2ScoreText: {fileID: 942335198}
+--- !u!114 &1421247905
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1421247901}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 3966328731
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1 &1625198972
 GameObject:
   m_ObjectHideFlags: 0
@@ -2295,7 +2321,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1996218915}
-  m_Material: {fileID: 13400000, guid: e83d6fca300ed8f42a92bc1046ffd661, type: 2}
+  m_Material: {fileID: 13400000, guid: d7385612484ac074596f058484ec4e61, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
