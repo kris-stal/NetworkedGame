@@ -953,7 +953,7 @@ GameObject:
   - component: {fileID: 280279339}
   - component: {fileID: 280279338}
   m_Layer: 5
-  m_Name: LobbyCodeUI
+  m_Name: LobbyCodeText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1711,6 +1711,51 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &519132948
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 519132950}
+  - component: {fileID: 519132949}
+  m_Layer: 0
+  m_Name: MenuManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &519132949
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 519132948}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a844979a77d3e4daf657025701715e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  networkManagerPrefab: {fileID: 997762559}
+--- !u!4 &519132950
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 519132948}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &698366721
 GameObject:
   m_ObjectHideFlags: 0
@@ -2425,6 +2470,17 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 954936224}
   m_CullTransparentMesh: 1
+--- !u!114 &997762559 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 8235405600287238985, guid: 988d3e60a4aa0a045b5ea21ff610b86e, type: 3}
+  m_PrefabInstance: {fileID: 811657676}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 593a2fe42fa9d37498c96f9a383b6521, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1046862220
 GameObject:
   m_ObjectHideFlags: 0
@@ -2595,21 +2651,24 @@ MonoBehaviour:
   m_GameObject: {fileID: 1213435578}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d5a844979a77d3e4daf657025701715e, type: 3}
+  m_Script: {fileID: 11500000, guid: 38f04983e1634c143bbe0ac56eeab570, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  signinButton: {fileID: 150805339}
-  hostLobbyButton: {fileID: 1423388348}
-  joinLobbyCodeButton: {fileID: 1466045527}
+  signinUI: {fileID: 1685941429}
+  playerNameInput: {fileID: 14960896}
+  signInButton: {fileID: 150805339}
+  mainMenuUI: {fileID: 1942589967}
+  codeInputBox: {fileID: 67967778}
+  createLobbyButton: {fileID: 1423388348}
+  joinLobbyWithCodeButton: {fileID: 1466045527}
+  lobbyUI: {fileID: 1305030241}
   startGameButton: {fileID: 1046862222}
   leaveLobbyButton: {fileID: 954936226}
-  lobbyNameUI: {fileID: 1915967184}
-  lobbyCodeUI: {fileID: 280279338}
-  codeInputBox: {fileID: 67967778}
-  nameInputBox: {fileID: 14960896}
-  lobbyUI: {fileID: 1305030241}
-  menuUI: {fileID: 1942589967}
-  signinUI: {fileID: 1685941429}
+  lobbyNameText: {fileID: 1915967184}
+  lobbyCodeText: {fileID: 280279338}
+  playerCountText: {fileID: 0}
+  playerListContent: {fileID: 0}
+  playerListItemPrefab: {fileID: 0}
 --- !u!1 &1274604658
 GameObject:
   m_ObjectHideFlags: 0
@@ -2667,7 +2726,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Host Lobby
+  m_text: 'Create Lobby
 
 '
   m_isRightToLeft: 0
@@ -2969,7 +3028,7 @@ GameObject:
   - component: {fileID: 1423388349}
   - component: {fileID: 1423388348}
   m_Layer: 5
-  m_Name: HostLobbyButton
+  m_Name: CreateLobbyButton
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3616,7 +3675,7 @@ GameObject:
   - component: {fileID: 1915967185}
   - component: {fileID: 1915967184}
   m_Layer: 5
-  m_Name: LobbyName
+  m_Name: LobbyNameText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3786,6 +3845,7 @@ SceneRoots:
   - {fileID: 811657676}
   - {fileID: 59565691}
   - {fileID: 1321434663}
+  - {fileID: 519132950}
   - {fileID: 30684189}
   - {fileID: 949558311}
   - {fileID: 330585546}

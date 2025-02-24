@@ -1,6 +1,7 @@
 using UnityEngine;
 using Unity.Netcode;
 using System.Collections.Generic;
+using UnityEngine.SceneManagement;
 
 // Main Game Manager script for handling game logic
 public class gameManager : NetworkBehaviour
@@ -65,14 +66,29 @@ public class gameManager : NetworkBehaviour
         }
     }
 
-    public void StartAsHost()
+    public void LeaveGame()
     {
-        NetworkManager.Singleton.StartHost();
-    }
+        if (NetworkManager.Singleton != null)
+        {
+            if (NetworkManager.Singleton.IsClient)
+            {
+                // Destroy player object before disconnecting
+                if (NetworkManager.Singleton.LocalClient != null && NetworkManager.Singleton.LocalClient.PlayerObject != null)
+                {
+                    NetworkObject playerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
+                    if (playerObject.IsOwner)
+                    {
+                        playerObject.Despawn(true); // Despawn on network
+                    }
 
-    public void StartAsClient()
-    {
-        NetworkManager.Singleton.StartClient();
+                    // Discconet
+                    NetworkManager.Singleton.Shutdown();
+
+                    // Load lobby scene again
+                    SceneManager.LoadScene("LobbyMenu");
+                }
+            }
+        }
     }
 
     public void findPlayerCount()
