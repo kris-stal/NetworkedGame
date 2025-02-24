@@ -17,11 +17,14 @@ public class mainMenuUI : MonoBehaviour
     [SerializeField] private Button startClientButton;
     [SerializeField] private Button startGameButton;
     [SerializeField] private Button leaveLobbyButton;
+    [SerializeField] private Button authenticateButton;
     [SerializeField] private TextMeshProUGUI lobbyNameUI;
     [SerializeField] private TextMeshProUGUI lobbyCodeUI;
     [SerializeField] private TMPro.TMP_InputField codeInputBox;
+    [SerializeField] private TMPro.TMP_InputField SigninName;
     [SerializeField] private GameObject lobbyUI;
     [SerializeField] private GameObject menuUI;
+    [SerializeField] private GameObject LoginUI;
 
     private Lobby hostLobby;
     private Lobby joinedLobby;
@@ -49,21 +52,26 @@ public class mainMenuUI : MonoBehaviour
             Debug.Log("CLIENT");
             NetworkManager.Singleton.StartClient(); // Start as client via NetworkManager
 
+            if (!string.IsNullOrEmpty(codeInputBox.text))
+            {
             lobbyCode = codeInputBox.text; // get code input
             JoinLobbyByCode(lobbyCode); // Join lobby via the code input
-
+            
             // Hide main menu UI
             menuUI.gameObject.SetActive(false);
 
             // Show lobby UI
             lobbyUI.gameObject.SetActive(true);
+            }
+            else 
+            {
+                Debug.Log("NO CODE ENTERED");
+            }
         });
 
         
         startGameButton.onClick.AddListener(() => { // On start game button click
             Debug.Log("STARTING GAME");
-
-
         });
 
         leaveLobbyButton.onClick.AddListener(() => { // On leave lobby button click
@@ -78,25 +86,23 @@ public class mainMenuUI : MonoBehaviour
             //. Hide Lobby UI
             lobbyUI.gameObject.SetActive(false);
         });
+
+        authenticateButton.onClick.AddListener(() => { // On authenticate button click
+            
+            // Sign player in
+            AuthenticatePlayer();
+            Debug.Log("Signed in as " + playerName);
+
+            // Hide Login UI
+            LoginUI.gameObject.SetActive(false);
+
+            // Show main menu UI
+            menuUI.gameObject.SetActive(true);
+        });
     }
 
-    // Method called when a client connects to the network
-    // The clientId parameter tells us which client connected
-    private void HandleClientConnected(ulong clientId)
+    private async void AuthenticatePlayer() 
     {
-        // Loading the lobby menu after connection
-        SceneManager.LoadScene("LobbyMenu");
-    }
-
-
-    // Start is called before first frame update, after Awake
-    private async void Start()
-    {   
-        // Subscribe to the OnClientConnectedCallback event
-        // += adds this method to the list of methods to call when this event occurs
-        //In this case, when a client connects (including the host), HandleClientConnected will be called
-        // NetworkManager.Singleton.OnClientConnectedCallback += HandleClientConnected;
-
         await UnityServices.InitializeAsync(); // Initalize Unity Authentication
 
         AuthenticationService.Instance.SignedIn += () => // Sign in
@@ -105,14 +111,28 @@ public class mainMenuUI : MonoBehaviour
         };
 
         await AuthenticationService.Instance.SignInAnonymouslyAsync(); // Sign in anonymously
-        playerName = "kris" + UnityEngine.Random.Range(10, 99); // Pick name randomly
-        Debug.Log(playerName);
+        if (!string.IsNullOrEmpty(SigninName.text))
+        {
+            playerName = SigninName.text;
+        }
+        else 
+        {
+            playerName = "kris" + UnityEngine.Random.Range(10, 99); // Pick name randomly
+        }
+    }
+
+
+    // Start is called before first frame update, after Awake
+    private void Start()
+    {   
+
     }
 
     // Update is ran every frame
     private void Update()
     {
-        HandleLobbyHeartbeat(); // 
+        HandleLobbyHeartbeat(); 
+        HandleLobbyPollForUpdates();
     }
 
     // Heartbeat function to keep server alive - by default the lobby service automatically shuts down a lobby for 30 seconds of inactivity
@@ -295,16 +315,5 @@ public class mainMenuUI : MonoBehaviour
         {
             Debug.Log(e);
         }
-    }
-
-    // OnDestroy is called when this script is destroyed for cleanup
-    void OnDestroy()
-    {   
-        // Check if NetworkManager still exists
-        if (NetworkManager.Singleton != null)
-
-            // Unsubscribe from the event to prevent calling methods on destroyed objects
-            // -= removes this method from the lists of methods to call when this event occurs
-            NetworkManager.Singleton.OnClientConnectedCallback -= HandleClientConnected;
     }
 }
