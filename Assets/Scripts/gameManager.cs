@@ -65,6 +65,16 @@ public class gameManager : NetworkBehaviour
         }
     }
 
+    public void StartAsHost()
+    {
+        NetworkManager.Singleton.StartHost();
+    }
+
+    public void StartAsClient()
+    {
+        NetworkManager.Singleton.StartClient();
+    }
+
     public void findPlayerCount()
     {
         int playerCount = playerObjects.Count; // int of num players in list of Player Objects
