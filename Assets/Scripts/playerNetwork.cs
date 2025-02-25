@@ -252,7 +252,6 @@ public class playerNetwork : NetworkBehaviour
     private void SyncMovementClientRpc(Vector3 newPos, ClientRpcParams rpcParams = default)
     {
         if (IsOwner) return;
-        // Debug.Log("Received Position: " + newPos + ". ");
 
         // Update pos for client 
         transform.position = newPos;

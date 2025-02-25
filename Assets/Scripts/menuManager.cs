@@ -1,14 +1,11 @@
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
 using System.Collections.Generic;
-using TMPro;
-using Unity.VisualScripting;
 using System.Threading.Tasks;
 
 public class menuManager : MonoBehaviour
@@ -41,14 +38,13 @@ public class menuManager : MonoBehaviour
         if (Instance == null)
         {
             Instance = this;
-            DontDestroyOnLoad(gameObject);
+            // DontDestroyOnLoad(gameObject);
         }
         else
         {
             Destroy(gameObject);
         }
     }
-
 
     // Start is called before first frame update, after Awake
     private void Start()
@@ -65,7 +61,7 @@ public class menuManager : MonoBehaviour
         HandleLobbyPollForUpdates();
     }
 
-        // Initialize NetworkManager if not already initialized
+    // Initialize NetworkManager if not already initialized
     private void InitializeNetworkManager()
     {
         if (isNetworkInitialized) return;

@@ -21,8 +21,6 @@ public class ballControl : NetworkBehaviour
         if (!IsServer) return;
         // only server handles scoring
 
-        Debug.Log("Ball collision detected with: " + collision.gameObject.name + " (Tag: " + collision.gameObject.tag + ")");// Debug log to verify collision
-
         if (collision.gameObject.CompareTag("RedGoal"))
         {
             Debug.Log("Red goal hit - Blue scores!"); // Debug log

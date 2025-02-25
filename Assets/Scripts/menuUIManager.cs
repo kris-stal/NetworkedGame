@@ -1,8 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using Unity.Netcode;
-using System;
 using System.Collections.Generic;
 
 public class menuUIManager : MonoBehaviour
@@ -29,8 +27,8 @@ public class menuUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI lobbyNameText;
     [SerializeField] private TextMeshProUGUI lobbyCodeText;
     [SerializeField] private TextMeshProUGUI playerCountText;
-    [SerializeField] private Transform playerListContent;
-    [SerializeField] private GameObject playerListItemPrefab;
+    // [SerializeField] private Transform playerListContent;
+    // [SerializeField] private GameObject playerListItemPrefab;
 
     // Ran when script is created - before Start
     private void Awake() {
@@ -169,32 +167,32 @@ public class menuUIManager : MonoBehaviour
         // Update lobby info
         lobbyNameText.text = "Lobby: " + menuManagerInstance.LobbyName;
         lobbyCodeText.text = "Code: " + menuManagerInstance.LobbyCode;
-        playerCountText.text = "Players: " + menuManagerInstance.GetPlayerCount() + "/4";
+        // playerCountText.text = "Players: " + menuManagerInstance.GetPlayerCount() + "/4";
         
         // Show start game button only for host
         startGameButton.gameObject.SetActive(menuManagerInstance.IsHost);
         
         // Update player list
-        UpdatePlayerList();
+        // UpdatePlayerList();
     }
 
-    private void UpdatePlayerList()
-    {
-        // Clear current player list
-        foreach (Transform child in playerListContent)
-        {
-            Destroy(child.gameObject);
-        }
+    // private void UpdatePlayerList()
+    // {
+    //     // Clear current player list
+    //     foreach (Transform child in playerListContent)
+    //     {
+    //         Destroy(child.gameObject);
+    //     }
         
-        // Get player names
-        List<string> playerNames = menuManagerInstance.GetPlayerNames();
+    //     // Get player names
+    //     List<string> playerNames = menuManagerInstance.GetPlayerNames();
         
-        // Populate player list
-        foreach (string playerName in playerNames)
-        {
-            GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
-            playerItem.GetComponentInChildren<TextMeshProUGUI>().text = playerName;
-        }
-    }
+    //     // Populate player list
+    //     foreach (string playerName in playerNames)
+    //     {
+    //         GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
+    //         playerItem.GetComponentInChildren<TextMeshProUGUI>().text = playerName;
+    //     }
+    // }
 
 }
