@@ -15,7 +15,6 @@ public class menuManager : MonoBehaviour
 
     // Network Manager
     [SerializeField] private NetworkManager networkManagerPrefab;
-    private bool isNetworkInitialized = false;
 
     // Private Variables only this script accesses
     private Lobby hostLobby;
@@ -23,13 +22,15 @@ public class menuManager : MonoBehaviour
     private float heartbeatTimer;
     private float lobbyUpdateTimer;
     private string playerName;
+     private bool isNetworkInitialized = false;
 
     // Public Variables for UI script to get/read
-    public Lobby HostLobby => hostLobby;
+    public Lobby HostLobby => hostLobby; // return values of the private variables
     public Lobby JoinedLobby => joinedLobby;
-    public string LobbyName => (hostLobby != null) ? hostLobby.Name : (joinedLobby != null) ? joinedLobby.Name : "";
-    public string LobbyCode => (hostLobby != null) ? hostLobby.LobbyCode : (joinedLobby != null) ? joinedLobby.LobbyCode : "";
-    public bool IsHost => hostLobby != null;
+    public string LobbyName => (hostLobby != null) ? hostLobby.Name : (joinedLobby != null) ? joinedLobby.Name : ""; // return hostlobby name if host, joinedlobby name if client, or empty if neither
+    public string LobbyCode => (hostLobby != null) ? hostLobby.LobbyCode : (joinedLobby != null) ? joinedLobby.LobbyCode : ""; // return hostlobby code if host, joinedlobby code if client, or empty if neither
+    public bool IsHost => hostLobby != null; // is host if hostlobby is not null
+
 
     // Ran when script is created - before Start
     private void Awake()
