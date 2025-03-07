@@ -3,28 +3,55 @@ using Unity.Netcode;
 using TMPro;
 using UnityEngine.UI;
 using System;
+using Unity.Multiplayer.Tools.NetStatsMonitor;
 public class gameUIManager : NetworkBehaviour
 {   
-    // Get Game Manager
-    public static gameManager Instance { get; private set; }
+    // Singleton Pattern
+    public static gameUIManager Instance { get; private set; }
+
+    // Game Manager script
+    private gameManager gameManagerInstance;
 
     // Variables
     // In Game UI
     [SerializeField] private GameObject gameUI;
     [SerializeField] private TextMeshProUGUI player1ScoreText;
     [SerializeField] private TextMeshProUGUI player2ScoreText;
-    [SerializeField] private TextMeshProUGUI[] pingTexts;
     [SerializeField] private TextMeshProUGUI highPingWarningText;
 
-    // In Game Menu UI
+    // UI elements for countdown and winner display
+    [SerializeField] private GameObject countdownPanel;
+    [SerializeField] private TextMeshProUGUI countdownText;
+    [SerializeField] private GameObject winnerPanel;
+    [SerializeField] private TextMeshProUGUI winnerText;
+    [SerializeField] private Button newGameButton;
+
+    // Tab Menu UI
+    [SerializeField] private GameObject tabMenuUI;
+    [SerializeField] private TextMeshProUGUI[] pingTexts;
+    [SerializeField] private RuntimeNetStatsMonitor networkMonitor;
+
+    [SerializeField] private Transform playerListContent;
+    [SerializeField] private GameObject playerListItemPrefab;
+
+    // Menu UI
     [SerializeField] private GameObject menuUI;
     [SerializeField] private Button resumeGameButton;
     [SerializeField] private Button leaveGameButton;
 
-    
+    // Other Variables
+    private bool isTabKeyDown;
+
+
     // Awake is called when the script instance is loaded, before Start
     private void Awake()
     {
+        Instance = this;
+
+        gameManagerInstance = gameManager.Instance;
+
+        networkMonitor.Visible = false; 
+
         resumeGameButton.onClick.AddListener(() => { // On resume game button click
 
             menuUI.gameObject.SetActive(false);
@@ -35,6 +62,19 @@ public class gameUIManager : NetworkBehaviour
 
             gameManager.Instance.LeaveGame();
         });
+    }
+
+    private void Start()
+    {
+        // Hide countdown and winner panels initially
+        ShowCountdown(false);
+        ShowWinnerScreen(false);
+        
+        // Add listener to new game button
+        if (newGameButton != null)
+        {
+            newGameButton.onClick.AddListener(OnNewGameButtonClicked);
+        }
     }
 
 
@@ -56,6 +96,7 @@ public class gameUIManager : NetworkBehaviour
             pingTexts[i].text = $"Player {i+1} Ping: {ping:0}ms";
         }
 
+        
         if ((!menuUI.gameObject.activeSelf) && Input.GetKeyDown(KeyCode.Escape)) // If menu ui isnt already up and player presses escape
         {
             menuUI.gameObject.SetActive(true); // show menu ui
@@ -63,6 +104,18 @@ public class gameUIManager : NetworkBehaviour
         else if (menuUI.gameObject.activeSelf && Input.GetKeyDown(KeyCode.Escape)) // if menu ui is already up and player presses escape
         {
             menuUI.gameObject.SetActive(false); // hide menu ui 
+        }
+
+        // Show Tab Menu while Tab is held
+        if (Input.GetKey(KeyCode.Tab))
+        {
+            tabMenuUI.gameObject.SetActive(true); // show tab menu while holding Tab
+            networkMonitor.Visible = true;
+        }
+        else
+        {
+            tabMenuUI.gameObject.SetActive(false); // hide tab menu when Tab is released
+            networkMonitor.Visible = false;
         }
 
         // Handle Score UI
@@ -75,4 +128,81 @@ public class gameUIManager : NetworkBehaviour
     {
         highPingWarningText.gameObject.SetActive(boolean);
     }
+
+        // Methods for countdown display
+    public void ShowCountdown(bool show)
+    {
+        if (countdownPanel != null)
+        {
+            countdownPanel.SetActive(show);
+        }
+    }
+    
+    public void UpdateCountdownText(string text)
+    {
+        if (countdownText != null)
+        {
+            countdownText.text = text;
+        }
+    }
+    
+    // Methods for winner display
+    public void ShowWinnerScreen(bool show)
+    {
+        if (winnerPanel != null)
+        {
+            winnerPanel.SetActive(show);
+        }
+    }
+    
+    public void ShowWinnerScreen(string winner)
+    {
+        Debug.Log($"Showing winner screen: {winner}");
+        if (winnerPanel != null && winnerText != null)
+        {
+            winnerText.text = winner;
+            winnerPanel.SetActive(true);
+        }
+    }
+    
+    // Button click handler for new game
+    private void OnNewGameButtonClicked()
+    {
+        if (gameManager.Instance != null)
+        {
+            gameManager.Instance.StartNewGame();
+            ShowWinnerScreen(false);
+        }
+    }
+
+    public void ShowWaitingForReconnection(bool show)
+    {
+        // Implement UI for showing a waiting message
+        // e.g., waitingPanel.SetActive(show);
+    }
+
+    public void UpdateReconnectionTimerText(string timerText)
+    {
+        // Update UI with timer text
+        // e.g., reconnectionTimerText.text = "Waiting for player: " + timerText;
+    }
+
+    // private void UpdatePlayerList()
+    // {
+    //     // Clear current player list
+    //     foreach (Transform child in playerListContent)
+    //     {
+    //         Destroy(child.gameObject);
+    //     }
+        
+    //     // Get player names
+    //     List<string> playerNames = gameManagerInstance.GetPlayerNames();
+        
+    //     // Populate player list
+    //     foreach (string playerName in playerNames)
+    //     {
+    //         GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
+    //         playerItem.GetComponentInChildren<TextMeshProUGUI>().text = playerName;
+    //     }
+    // }
 }

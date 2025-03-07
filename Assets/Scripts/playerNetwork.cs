@@ -4,11 +4,13 @@ using UnityEngine;
 // Main script for player objects
 public class playerNetwork : NetworkBehaviour
 {
+    // Variables
     [SerializeField] private float acceleration = 5f;
     [SerializeField] private float deceleration = 5f;
     [SerializeField] private float maxSpeed = 20f;
     public Rigidbody rb; // player rigidbody
     public Vector3 InputKey; // input keys
+    private bool movementEnabled = false; // control if movement is enabled
     
 
     // awake is called when script is first made
@@ -75,7 +77,16 @@ public class playerNetwork : NetworkBehaviour
         // if NOT the local owner of this player object, return
         if (!IsOwner) return;    
 
-        InputKey = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
+        // Only process input if movement is enabled
+        if (movementEnabled)
+        {
+            InputKey = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
+        }
+        else
+        {
+            // Clear input when movement is disabled
+            InputKey = Vector3.zero;
+        }
 
         // Press 'I' to generate new random number so can test sync between host and client:
         if (Input.GetKeyDown(KeyCode.I)) {
@@ -100,6 +111,18 @@ public class playerNetwork : NetworkBehaviour
     private void FixedUpdate() 
     {
         if (!IsOwner) return;
+
+        // Only process movement if enabled
+        if (!movementEnabled)
+        {
+            // Force zero velocity when movement is disabled
+            if (rb.linearVelocity.magnitude > 0.1f)
+            {
+                rb.linearVelocity = Vector3.zero;
+                RequestStopMovementServerRpc();
+            }
+            return;
+        }
 
         // Apply movement locally first for responsive input
         if (InputKey != Vector3.zero)
@@ -132,6 +155,9 @@ public class playerNetwork : NetworkBehaviour
     // Collision check
     private void OnCollisionEnter(Collision collision)
     {
+        if (!movementEnabled) return; // skip if movement disabled
+
+
         // Allow client-side collision response for immediate feedback
         if (!IsServer && IsOwner)
         {
@@ -181,6 +207,26 @@ public class playerNetwork : NetworkBehaviour
         }
     }
 
+    // Method for gameManager to enable/disable movement
+    public void SetMovementEnabled(bool enabled)
+    {
+        movementEnabled = enabled;
+        
+        // If disabling movement, immediately stop velocity
+        if (!enabled && rb != null)
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+            
+            // Tell server to stop movement for this player
+            if (IsOwner)
+            {
+                RequestStopMovementServerRpc();
+            }
+        }
+    }
+
+
     // Server Rpc
     // When client calls ServerRpc function, the server runs the function NOT the client
     // Clients can use Server Remote Procedure Calls to ask for movement / actions.
@@ -197,6 +243,7 @@ public class playerNetwork : NetworkBehaviour
     [ServerRpc]
     private void RequestAccelerateServerRpc(Vector3 InputKey, ServerRpcParams rpcParams = default)
     {
+        if (!movementEnabled) return; // skip if movement disabled
 
         // server is authoritative
         Vector3 force = InputKey * acceleration;
@@ -224,6 +271,8 @@ public class playerNetwork : NetworkBehaviour
     [ServerRpc]
     private void RequestDecelerateServerRpc(ServerRpcParams rpcParams = default)
     {
+        if (!movementEnabled) return; // skip if movement disabled
+
         // Only apply deceleration if we're not in a collision
         if (rb.linearVelocity.magnitude > 0.1f)  // Small threshold to prevent jitter
         {
@@ -233,6 +282,20 @@ public class playerNetwork : NetworkBehaviour
         SyncMovementClientRpc(transform.position);
         SyncVelocityClientRpc(rb.linearVelocity);
     }
+
+    // Completely stop movement
+    [ServerRpc]
+    private void RequestStopMovementServerRpc(ServerRpcParams rpcParams = default)
+    {
+        // Force stop all movement
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        
+        // Sync to all clients
+        SyncMovementClientRpc(transform.position);
+        SyncVelocityClientRpc(Vector3.zero);
+    }
+
 
 
     // Client Rpc

@@ -13,8 +13,9 @@ public class menuManager : MonoBehaviour
 
     public static menuManager Instance { get; private set; } // Ensures that the menuManager can only be read by other scripts, but only this script can modify it.
 
-    // Network Manager
+    // Reference other scripts
     [SerializeField] private NetworkManager networkManagerPrefab;
+    [SerializeField] private menuUIManager menuUIManagerInstance;
 
     // Private Variables only this script accesses
     private Lobby hostLobby;
@@ -22,7 +23,9 @@ public class menuManager : MonoBehaviour
     private float heartbeatTimer;
     private float lobbyUpdateTimer;
     private string playerName;
-     private bool isNetworkInitialized = false;
+    private bool isNetworkInitialized = false;
+    private string lastGameLobbyId;
+    private bool wasDisconnected = false;
 
     // Public Variables for UI script to get/read
     public Lobby HostLobby => hostLobby; // return values of the private variables
@@ -35,24 +38,60 @@ public class menuManager : MonoBehaviour
     // Ran when script is created - before Start
     private void Awake()
     {
-        // Singleton pattern implementation
+        // Set Singleton Pattern
         if (Instance == null)
         {
             Instance = this;
-            // DontDestroyOnLoad(gameObject);
         }
         else
         {
             Destroy(gameObject);
+            return;
         }
-    }
 
-    // Start is called before first frame update, after Awake
-    private void Start()
-    {   
         // Initialize timers
         heartbeatTimer = 15f;
         lobbyUpdateTimer = 1.1f;
+    }
+
+    // Start is called before first frame update, after Awake
+    private async void Start()
+    {   
+    // Initialize Unity Services first
+    try
+    {
+        await UnityServices.InitializeAsync();
+        Debug.Log("Unity Services initialized successfully");
+    }
+    catch (System.Exception e)
+    {
+        Debug.LogError($"Failed to initialize Unity Services: {e.Message}");
+        return;
+    }
+
+    // Find the UI manager if not assigned through Inspector
+    if (menuUIManagerInstance == null)
+        {
+            menuUIManagerInstance = menuUIManager.Instance;
+            
+            if (menuUIManagerInstance == null)
+            {
+                Debug.LogError("menuUIManager instance not found! Attempting to find in scene.");
+                menuUIManagerInstance = FindFirstObjectByType<menuUIManager>();
+                
+                if (menuUIManagerInstance == null)
+                {
+                    Debug.LogError("menuUIManager not found in scene either!");
+                    return;
+                }
+            }
+        }
+        // IMPORTANT: Always show sign-in screen first
+        menuUIManagerInstance.ShowSigninScreen();
+        
+        // No automatic authentication attempts
+        // Let the player click the sign-in button explicitly
+        Debug.Log("Showing sign-in screen. User must sign in manually.");
     }
 
     // Update is ran every frame
@@ -99,15 +138,30 @@ public class menuManager : MonoBehaviour
 
     public async Task AuthenticatePlayer() 
     {
-        await UnityServices.InitializeAsync(); // Initalize Unity Authentication
-
-        AuthenticationService.Instance.SignedIn += () => // Sign in
+        try 
         {
-            Debug.Log("Signed in" + AuthenticationService.Instance.PlayerId);
-        };
+            // Initialize Unity services if not already done
+            if (UnityServices.State != ServicesInitializationState.Initialized)
+            {
+                Debug.LogWarning("Unity Services are not initialized yet, intializing.");
+                await UnityServices.InitializeAsync();
+            }
+            
+            // Register event callback
+            AuthenticationService.Instance.SignedIn += () => 
+            {
+                Debug.Log("Signed in: " + AuthenticationService.Instance.PlayerId);
+            };
 
-        await AuthenticationService.Instance.SignInAnonymouslyAsync(); // Sign in anonymously
-        Debug.Log("Authentication complete for player: " + playerName);
+            // Sign in anonymously
+            await AuthenticationService.Instance.SignInAnonymouslyAsync();
+            Debug.Log("Authentication complete for player: " + playerName);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Authentication failed: {e.Message}");
+            throw;
+        }
     }
 
     // Heartbeat function to keep server alive - by default the lobby service automatically shuts down a lobby for 30 seconds of inactivity
@@ -136,7 +190,7 @@ public class menuManager : MonoBehaviour
             lobbyUpdateTimer -= Time.deltaTime; // timer goes down in time
             if (lobbyUpdateTimer < 0f) // when timer reaches 0
             {   
-                float lobbyUpdateTimerMax = 1.1f; // set max time for timer
+                float lobbyUpdateTimerMax = 3f; // set max time for timer
                 lobbyUpdateTimer  = lobbyUpdateTimerMax; // reset timer
 
                 Lobby lobby = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id); // update the lobby connected to
@@ -418,5 +472,96 @@ public class menuManager : MonoBehaviour
         }
         
         return 0;
+    }
+
+    // Method to check if player was in a game and disconnected
+    public async Task<bool> CheckForReconnection()
+    {
+        if (!AuthenticationService.Instance.IsSignedIn)
+        {
+            Debug.Log("Player not signed in, cannot check for reconnection");
+            return false;
+        }
+        
+        try
+        {
+            // Query for lobbies where this player is still listed
+            // This only works if the lobby hasn't removed the player yet
+            QueryLobbiesOptions options = new QueryLobbiesOptions
+            {
+                Filters = new List<QueryFilter>
+                {
+                    new QueryFilter(QueryFilter.FieldOptions.MaxPlayers, AuthenticationService.Instance.PlayerId, QueryFilter.OpOptions.EQ)
+                }
+            };
+            
+            QueryResponse response = await LobbyService.Instance.QueryLobbiesAsync(options);
+            
+            if (response.Results.Count > 0)
+            {
+                // Found a lobby with this player
+                Lobby reconnectionLobby = response.Results[0];
+                lastGameLobbyId = reconnectionLobby.Id;
+                wasDisconnected = true;
+                
+                // Show reconnection UI
+                menuUIManagerInstance.ShowReconnectionOption(reconnectionLobby.Name);
+                return true;
+            }
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"Error checking for reconnection: {e.Message}");
+        }
+        
+        return false;
+    }
+
+    // Method to rejoin the game
+    public async Task<bool> ReconnectToGame()
+    {
+        if (!wasDisconnected || string.IsNullOrEmpty(lastGameLobbyId))
+        {
+            Debug.LogError("No game to reconnect to");
+            return false;
+        }
+        
+        try
+        {
+            // Join the lobby
+            Lobby lobby = await LobbyService.Instance.JoinLobbyByIdAsync(lastGameLobbyId, new JoinLobbyByIdOptions
+            {
+                Player = GetPlayer()
+            });
+            
+            joinedLobby = lobby;
+            
+            // Initialize the Network Manager
+            InitializeNetworkManager();
+            
+            // Start as client
+            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+            {
+                bool success = NetworkManager.Singleton.StartClient();
+                if (!success)
+                {
+                    Debug.LogError("Failed to start as client for reconnection!");
+                    return false;
+                }
+                
+                // Set a flag to indicate this is a reconnection
+                PlayerPrefs.SetInt("IsReconnecting", 1);
+                PlayerPrefs.SetString("ReconnectAuthId", AuthenticationService.Instance.PlayerId);
+                
+                Debug.Log("Started as network client for reconnection");
+            }
+            
+            return true;
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"Failed to reconnect to game: {e.Message}");
+            return false;
+        }
     }
 }
