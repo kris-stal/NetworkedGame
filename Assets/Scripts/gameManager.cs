@@ -2,6 +2,7 @@ using UnityEngine;
 using Unity.Netcode;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
+using System.IO;
 
 // Main Game Manager script for handling game and networking logic
 public class gameManager : NetworkBehaviour
@@ -50,7 +51,7 @@ public class gameManager : NetworkBehaviour
     
     // Other Network Variables
     [SerializeField] private gameUIManager gameUIManagerInstance;  // Get gameUIManager script
-    [SerializeField] private CloudSaveManager cloudSaveManager; // Get Cloud Save Manager
+    [SerializeField] private PlayerProfileManager playerProfileManager; // Get player profile script
     
     [System.Serializable] // Class to store state of game
     public class GameState
@@ -108,6 +109,8 @@ public class gameManager : NetworkBehaviour
     private const int WIN_SCORE = 10;
     private const float INITIAL_COUNTDOWN = 5f;
     private const float RESET_COUNTDOWN = 3f;
+    private const string TEMP_SAVE_PATH = "gameState.json"; // Added constant for local save path
+
 
 
     // Awake is called when the script instance is loaded, before Start
@@ -387,6 +390,25 @@ public class gameManager : NetworkBehaviour
         return 0f;
     }
 
+    private void SaveGameStateLocally(GameState state)
+    {
+        string json = JsonUtility.ToJson(state);
+        File.WriteAllText(TEMP_SAVE_PATH, json);
+        Debug.Log("Game state saved locally");
+    }
+
+    private GameState LoadGameStateLocally()
+    {
+        if(File.Exists(TEMP_SAVE_PATH))
+        {
+            string json = File.ReadAllText(TEMP_SAVE_PATH);
+            return JsonUtility.FromJson<GameState>(json); // Load from file
+        }
+        return null;
+    }
+
+
+
     private GameState CaptureGameState()
     {
         // Capture game state
@@ -504,14 +526,15 @@ public class gameManager : NetworkBehaviour
 }
 
 
-    private async void OnClientDisconnect(ulong clientId)
+    private void OnClientDisconnect(ulong clientId)
     {
         if (!IsServer) return; // Only server handles this
 
         // Ignore host (server) disconnects
         if (clientId == NetworkManager.Singleton.LocalClientId)
         {
-            Debug.Log("Host (server) is disconnecting. Skipping disconnect handling.");
+            Debug.Log("Host (server) is disconnecting, ending game");
+            NetworkManager.Singleton.Shutdown();
             return;
         }
 
@@ -525,46 +548,35 @@ public class gameManager : NetworkBehaviour
         // Capture the full game state
         GameState gameState = CaptureGameState();
 
-        // Save to cloud
-        await cloudSaveManager.SaveGameState(gameState);
+        // Save locally
+        SaveGameStateLocally(gameState);
 
         // Find the disconnected player's state in the game state
         PlayerState playerState = gameState.players.Find(p => p.clientId == clientId);
-
-
         if (playerState != null)
             {
                 // Store disconnected player state
-                PlayerState disconnectedState = new PlayerState
-                {
-                    authId = authId,
-                    clientId = clientId,
-                    position = playerState.position,
-                    velocity = playerState.velocity,
-                    angularVelocity = playerState.angularVelocity,
-                    score = playerState.score,
-                    isConnected = false,
-                    disconnectTime = Time.time
-                };
-                disconnectedPlayerStates[authId] = disconnectedState;
-
-
-                // Start reconnection timer if not already waiting
+                disconnectedPlayerStates[authId] = playerState;
                 if (!waitingForReconnection.Value)
                 {
                     waitingForReconnection.Value = true;
                     reconnectionTimer = reconnectionWaitTime;
-                    
-                    // Pause the game
-                    if (gameInProgress.Value)
-                    {
-                        gameInProgress.Value = false;
-                        
-                        // Show waiting for player message
-                        ShowWaitingForPlayerClientRpc();
-                    }
+                    gameInProgress.Value = false;
+                    ShowWaitingForPlayerClientRpc();
                 }
-                
+
+                // PlayerState disconnectedState = new PlayerState
+                // {
+                //     authId = authId,
+                //     clientId = clientId,
+                //     position = playerState.position,
+                //     velocity = playerState.velocity,
+                //     angularVelocity = playerState.angularVelocity,
+                //     score = playerState.score,
+                //     isConnected = false,
+                //     disconnectTime = Time.time
+                // };
+            
                 Debug.Log($"Player {clientId} disconnected. Stored state and waiting for reconnection.");
             }
     }
@@ -591,17 +603,26 @@ public class gameManager : NetworkBehaviour
 
 
     // This should be called after authentication when a player connects to the game
-    public void RegisterPlayer(ulong clientId, string authId)
+    public void RegisterPlayer(ulong clientId)
     {
         if (!IsServer) return;
-        
-        playerIds[clientId] = authId;
-        
-        // Check if this is a reconnecting player
-        if (disconnectedPlayerStates.TryGetValue(authId, out PlayerState state))
+
+        string playerName = playerProfileManager?.GetPlayerName() ?? "Unknown"; // Fetch name locally
+        playerIds[clientId] = playerName;
+
+        if (disconnectedPlayerStates.TryGetValue(playerName, out PlayerState state))
         {
-            // Handle reconnection
-            HandlePlayerReconnection(clientId, authId, state);
+            HandlePlayerReconnection(clientId, playerName, state);
+        }
+        else if (File.Exists(TEMP_SAVE_PATH))
+        {
+            GameState savedState = LoadGameStateLocally();
+            if (savedState != null)
+            {
+                RestoreGameState(savedState);
+                File.Delete(TEMP_SAVE_PATH);
+                Debug.Log("Game state restored from local save.");
+            }
         }
     }
 
@@ -955,7 +976,7 @@ public class gameManager : NetworkBehaviour
     public void SendAuthIdServerRpc(string authId, ServerRpcParams serverRpcParams = default)
     {
         ulong clientId = serverRpcParams.Receive.SenderClientId;
-        RegisterPlayer(clientId, authId);
+        RegisterPlayer(clientId);
         
         // If we're waiting for reconnection, check if this player was disconnected
         if (waitingForReconnection.Value && disconnectedPlayerStates.TryGetValue(authId, out PlayerState state))
@@ -987,7 +1008,7 @@ public class gameManager : NetworkBehaviour
         Debug.Log("Ball position reset");
     }
 
-        // Reset Player Positions
+    // Reset Player Positions
     [ServerRpc]
     private void ResetPlayersPositionServerRpc()
     {

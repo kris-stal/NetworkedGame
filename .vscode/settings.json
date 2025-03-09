@@ -56,5 +56,6 @@
         "temp/": true,
         "Temp/": true
     },
-    "dotnet.defaultSolution": "cs3ip_game.sln"
+    "dotnet.defaultSolution": "cs3ip.sln",
+    "C_Cpp.errorSquiggles": "enabled"
 }
