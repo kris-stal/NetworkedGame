@@ -2,6 +2,7 @@ using UnityEngine;
 using Unity.Netcode;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
+using UnityEngine.UIElements.Experimental;
 
 // Main Game Manager script for handling game and networking logic
 public class gameManager : NetworkBehaviour
@@ -50,15 +51,42 @@ public class gameManager : NetworkBehaviour
     
     // Other Network Variables
     [SerializeField] private gameUIManager gameUIManagerInstance;  // Get gameUIManager script
+    [SerializeField] private CloudSaveManager cloudSaveManager // Get Cloud Save Manager
     
-    [System.Serializable] // Class to store player state when disconnected
-    public class GamePlayerState
+    [System.Serializable] // Class to store state of game
+    public class GameState
+    {
+        // Game State
+        public float gameTime;
+        public bool gameInProgress;
+        public bool gameOver;
+        public ulong winnerClientId;
+        public float countdownValue;
+
+        // Player States
+        public List<PlayerState> players = new List<PlayerState>();
+
+        // Ball State
+        public Vector3 ballPosition;
+        public Vector3 ballVelocity;
+        public Vector3 ballAngularVelocity;
+
+        // Timestamp
+        public System.DateTime timestamp;
+    }
+
+    // Player States
+    [System.Serializable]
+    public class PlayerState
     {
         public string authId;
-        public Vector3 position;
-        public int score;
-        public float disconnectTime;
         public ulong clientId;
+        public Vector3 position;
+        public Vector3 velocity;
+        public Vector3 angularVelocity;
+        public int score;
+        public bool isConnected;
+        public float disconnectTime;
     }
 
     private float pingUpdateInterval = 3f; // How often ping update is carried out
@@ -274,8 +302,6 @@ public class gameManager : NetworkBehaviour
         // Freeze ball
         if (theBall != null && theBall.TryGetComponent<Rigidbody>(out Rigidbody ballRb))
         {
-            ballRb.linearVelocity = Vector3.zero;
-            ballRb.angularVelocity = Vector3.zero;
             ballRb.isKinematic = true;
         }
         
@@ -362,9 +388,113 @@ public class gameManager : NetworkBehaviour
         return 0f;
     }
 
+    private GameState CaptureGameState()
+    {
+        GameState state = new GameState
+        {
+            gameTime = Time.time,
+            gameInProgress = gameInProgress.Value,
+            gameOver = gameOver.Value,
+            winnerClientId = winnerClientId.Value,
+            countdownValue = countdownTimer.Value,
+            timestamp = System.DateTime.Now
+        };
+
+         // Capture player states
+    foreach (GameObject playerObj in playerObjects)
+    {
+        if (playerObj != null)
+        {
+            ulong clientId = playerObj.GetComponent<NetworkObject>().OwnerClientId;
+            
+            PlayerState playerState = new PlayerState
+            {
+                clientId = clientId,
+                authId = playerIds.TryGetValue(clientId, out string authId) ? authId : "unknown",
+                position = playerObj.transform.position,
+                isConnected = true,
+                score = clientId == 1 ? playerScore1.Value : playerScore2.Value
+            };
+            
+            // Get velocity if available
+            if (playerObj.TryGetComponent<Rigidbody>(out Rigidbody rb))
+            {
+                playerState.velocity = rb.linearVelocity;
+                playerState.angularVelocity = rb.angularVelocity;
+            }
+            
+            state.players.Add(playerState);
+        }
+    }
+    
+    
+    }
+
+    // Method to restore game state
+private void RestoreGameState(GameState state)
+{
+    if (!IsServer) return;
+    
+    // Restore game state variables
+    gameInProgress.Value = state.gameInProgress;
+    gameOver.Value = state.gameOver;
+    winnerClientId.Value = state.winnerClientId;
+    countdownTimer.Value = state.countdownValue;
+    
+    // Restore ball state
+    if (theBall != null && state.ballPosition != Vector3.zero)
+    {
+        theBall.transform.position = state.ballPosition;
+        
+        if (theBall.TryGetComponent<Rigidbody>(out Rigidbody ballRb))
+        {
+            ballRb.linearVelocity = state.ballVelocity;
+            ballRb.angularVelocity = state.ballAngularVelocity;
+            ballRb.isKinematic = !gameInProgress.Value;
+        }
+    }
+    
+    // Restore connected player states
+    foreach (PlayerState playerState in state.players)
+    {
+        if (playerState.isConnected)
+        {
+            GameObject playerObj = FindPlayerByClientId(playerState.clientId);
+            
+            if (playerObj != null)
+            {
+                // Restore position
+                playerObj.transform.position = playerState.position;
+                
+                // Restore velocity if applicable
+                if (playerObj.TryGetComponent<Rigidbody>(out Rigidbody rb) && 
+                    playerState.velocity != Vector3.zero)
+                {
+                    rb.velocity = playerState.velocity;
+                    rb.angularVelocity = playerState.angularVelocity;
+                }
+                
+                // Restore score
+                if (playerState.clientId == 1)
+                {
+                    playerScore1.Value = playerState.score;
+                }
+                else if (playerState.clientId == 2)
+                {
+                    playerScore2.Value = playerState.score;
+                }
+            }
+        }
+    }
+    
+    // Notify clients that game state has been restored
+    NotifyGameStateRestoredClientRpc();
+}
+
+
     private void OnClientDisconnect(ulong clientId)
     {
-        if (!IsServer) return; // only server handles this!
+        if (!IsServer) return; // Only server handles this
 
         // // Find player's auth ID
         // string authId = null;
@@ -377,12 +507,25 @@ public class gameManager : NetworkBehaviour
         //     }
         // }
 
+        // Find player's auth ID
+        if (!playerIds.TryGetValue(clientId, out string authId))
+        {
+            Debug.LogError($"Could not find authId for disconnected client {clientId}");
+            return;
+        }
         // // If not player auth ID
         // if (authId == null)
         // {
         //     Debug.LogError($"Could not find authId for disconnected client {clientId}");
         //     return;
         // }
+
+        GameState gameState = CaptureGameState();
+
+        // Save to cloud
+        cloudSaveManager.SaveGameState(gameState);
+
+        PlayerState playerState = gameState.Players.Find(p => p.clientId);
 
         // Ignore host (server) disconnects
         if (clientId == NetworkManager.Singleton.LocalClientId)
@@ -400,14 +543,17 @@ public class gameManager : NetworkBehaviour
 
 
         // Save state for disconnected player
-        GamePlayerState playerState = new GamePlayerState
+        GameState fullGameState = CaptureGameState();
+
+
+        GameState playerState = new GameState
         {
             authId = authId,
             clientId = clientId,
             disconnectTime = Time.time,
             score = clientId == 1 ? playerScore1.Value : playerScore2.Value,
             position = FindPlayerByClientId(clientId)?.transform.position ?? Vector3.zero
-        };
+        }; 
         
         disconnectedPlayerStates[authId] = playerState;
         
@@ -422,6 +568,7 @@ public class gameManager : NetworkBehaviour
             if (gameInProgress.Value)
             {
                 gameInProgress.Value = false;
+
                 // Show waiting for player message
                 ShowWaitingForPlayerClientRpc();
             }
@@ -434,11 +581,22 @@ public class gameManager : NetworkBehaviour
     {
         if (!IsServer) return;
         
-        // For new connections, we need a way to identify returning players
-        // We'll need to extend the connection process to include authentication ID
-
-        // We'll handle this in a new method that should be called when a player connects and authenticates
+        Debug.Log($"Client {clientId} connected to the game");
+        
+        // We won't handle authentication directly in this method
+        // Instead, we'll expect the client to send their authId via a ServerRPC
+        // This allows for proper authentication flow from the client
+        
+        // Notify the client that they need to authenticate
+        RequestAuthenticationClientRpc(new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { clientId }
+            }
+        });
     }
+
 
     // This should be called after authentication when a player connects to the game
     public void RegisterPlayer(ulong clientId, string authId)
@@ -457,9 +615,27 @@ public class gameManager : NetworkBehaviour
 
     private void HandlePlayerReconnection(ulong clientId, string authId, GamePlayerState state)
     {
-        if (!IsServer) return;
+        if (!IsServer) return; // Only server handles this
         
         Debug.Log($"Player {authId} reconnected with client ID {clientId}");
+
+        // Find player GameObject
+        GameObject playerObj = FindPlayerByClientId(clientId);
+        if (playerObj != null)
+        {
+            // Restore Position
+            playerObj.transform.position = state.positon;
+
+            // Restore Score
+            if (clientId == 1)
+            {
+                playerScore1.Value = state.score;
+            }
+            else if (clientId == 2)
+            {
+                playerScore2.Value = state.score;
+            }
+        }
         
         // Remove from disconnected list
         disconnectedPlayerStates.Remove(authId);
@@ -472,6 +648,8 @@ public class gameManager : NetworkBehaviour
             // Resume game after countdown
             StartReconnectionCountdown();
         }
+
+        // RestorePlayerState();
     }
 
     private void StartReconnectionCountdown()
@@ -710,6 +888,14 @@ public class gameManager : NetworkBehaviour
         gameUIManagerInstance.ShowWaitingForReconnection(false);
     }
 
+    [ClientRpc]
+    private void NotifyGameStateRestoredClientRpc()
+    {
+        Debug.Log("Game state has been restored");
+        // You could trigger a UI notification here if needed
+    }
+
+
     // Game Handling Calls
     // Start the game when countdown is complete
     [ServerRpc]
@@ -754,7 +940,6 @@ public class gameManager : NetworkBehaviour
         }
     }
 
-
     // Reset Ball Position
     [ServerRpc]
     private void ResetBallPositionServerRpc()
@@ -773,6 +958,36 @@ public class gameManager : NetworkBehaviour
         
         // Notify clients
         ResetBallPositionClientRpc();
+    }
+
+    // Client sends their auth ID to the server
+    [ServerRpc(RequireOwnership = false)]
+    public void SendAuthIdServerRpc(string authId, ServerRpcParams serverRpcParams = default)
+    {
+        ulong clientId = serverRpcParams.Receive.SenderClientId;
+        RegisterPlayer(clientId, authId);
+        
+        // If we're waiting for reconnection, check if this player was disconnected
+        if (waitingForReconnection.Value && disconnectedPlayerStates.TryGetValue(authId, out GamePlayerState state))
+        {
+            // Restore their state (handled in RegisterPlayer)
+            
+            // If this was the last disconnected player, resume game
+            if (disconnectedPlayerStates.Count == 1) // Will be 0 after RegisterPlayer removes this entry
+            {
+                StartReconnectionCountdown();
+            }
+        }
+    }
+
+
+    private void RequestAuthenticationClientRpc(ClientRpcParams clientRpcParams = default)
+    {
+        // Client should call SendAuthIdServerRpc with their auth ID
+        // This would typically come from their authentication service
+        // For testing, you could use a placeholder
+        string myAuthId = "auth_" + NetworkManager.Singleton.LocalClientId;
+        SendAuthIdServerRpc(myAuthId);
     }
     
     [ClientRpc]

@@ -27,6 +27,9 @@ public class menuManager : MonoBehaviour
     private string lastGameLobbyId;
     private bool wasDisconnected = false;
 
+    // Constants
+    private float lobbyUpdateTimerMax = 2f;
+
     // Public Variables for UI script to get/read
     public Lobby HostLobby => hostLobby; // return values of the private variables
     public Lobby JoinedLobby => joinedLobby;
@@ -51,7 +54,7 @@ public class menuManager : MonoBehaviour
 
         // Initialize timers
         heartbeatTimer = 15f;
-        lobbyUpdateTimer = 1.1f;
+        lobbyUpdateTimer = 3f;
     }
 
     // Start is called before first frame update, after Awake
@@ -86,7 +89,7 @@ public class menuManager : MonoBehaviour
                 }
             }
         }
-        // IMPORTANT: Always show sign-in screen first
+        // Always show sign-in screen first
         menuUIManagerInstance.ShowSigninScreen();
         
         // No automatic authentication attempts
@@ -101,7 +104,7 @@ public class menuManager : MonoBehaviour
         HandleLobbyPollForUpdates();
     }
 
-    // Initialize NetworkManager if not already initialized
+    // Initialize NetworkManager Method
     private void InitializeNetworkManager()
     {
         if (isNetworkInitialized) return;
@@ -164,7 +167,8 @@ public class menuManager : MonoBehaviour
         }
     }
 
-    // Heartbeat function to keep server alive - by default the lobby service automatically shuts down a lobby for 30 seconds of inactivity
+    // Heartbeat function to keep server alive -
+    // by default the lobby service automatically shuts down a lobby for 30 seconds of inactivity.
     private async void HandleLobbyHeartbeat() 
     {
         if (hostLobby != null) // If there is a lobby
@@ -190,8 +194,7 @@ public class menuManager : MonoBehaviour
             lobbyUpdateTimer -= Time.deltaTime; // timer goes down in time
             if (lobbyUpdateTimer < 0f) // when timer reaches 0
             {   
-                float lobbyUpdateTimerMax = 3f; // set max time for timer
-                lobbyUpdateTimer  = lobbyUpdateTimerMax; // reset timer
+                lobbyUpdateTimer = lobbyUpdateTimerMax; // reset timer
 
                 Lobby lobby = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id); // update the lobby connected to
                 joinedLobby = lobby; // set joined lobby as this currently connected lobby

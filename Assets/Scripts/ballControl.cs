@@ -11,7 +11,6 @@ public class ballControl : NetworkBehaviour
     void Start()
     {
         rb = GetComponent<Rigidbody>(); // get ball rigidbody
-        Invoke("goBall", 2);
     }
 
 
