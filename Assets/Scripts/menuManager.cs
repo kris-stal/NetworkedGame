@@ -59,41 +59,58 @@ public class menuManager : MonoBehaviour
 
     // Start is called before first frame update, after Awake
     private async void Start()
-    {   
-    // Initialize Unity Services first
-    try
-    {
-        await UnityServices.InitializeAsync();
-        Debug.Log("Unity Services initialized successfully");
-    }
-    catch (System.Exception e)
-    {
-        Debug.LogError($"Failed to initialize Unity Services: {e.Message}");
-        return;
-    }
-
-    // Find the UI manager if not assigned through Inspector
-    if (menuUIManagerInstance == null)
+    {       
+        // Firstly checking if Unity Services is active,
+        // if player was already signed in, 
+        // and if player was in game already.
+        try
         {
-            menuUIManagerInstance = menuUIManager.Instance;
-            
-            if (menuUIManagerInstance == null)
+            await UnityServices.InitializeAsync();
+            Debug.Log("Unity Services initialized successfully");
+
+            // Check if the user is already signed in
+            if (AuthenticationService.Instance.IsSignedIn)
             {
-                Debug.LogError("menuUIManager instance not found! Attempting to find in scene.");
-                menuUIManagerInstance = FindFirstObjectByType<menuUIManager>();
+                Debug.Log("User already signed in, skipping sign-in screen.");
+                
+                // Check if the player was in a game before disconnecting
+                bool reconnected = await CheckForReconnection();
+                if (!reconnected)
+                {
+                    // No previous game, go to main menu
+                    menuUIManagerInstance.ShowMainMenuScreen();
+                }
+                return;
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Failed to initialize Unity Services: {e.Message}");
+            return;
+        }
+
+
+        // Find the UI manager if not assigned through Inspector
+        if (menuUIManagerInstance == null)
+            {
+                menuUIManagerInstance = menuUIManager.Instance;
                 
                 if (menuUIManagerInstance == null)
                 {
-                    Debug.LogError("menuUIManager not found in scene either!");
-                    return;
+                    Debug.LogError("menuUIManager instance not found! Attempting to find in scene.");
+                    menuUIManagerInstance = FindFirstObjectByType<menuUIManager>();
+                    
+                    if (menuUIManagerInstance == null)
+                    {
+                        Debug.LogError("menuUIManager not found in scene either!");
+                        return;
+                    }
                 }
             }
-        }
+
         // Always show sign-in screen first
         menuUIManagerInstance.ShowSigninScreen();
         
-        // No automatic authentication attempts
-        // Let the player click the sign-in button explicitly
         Debug.Log("Showing sign-in screen. User must sign in manually.");
     }
 
@@ -149,6 +166,13 @@ public class menuManager : MonoBehaviour
                 Debug.LogWarning("Unity Services are not initialized yet, intializing.");
                 await UnityServices.InitializeAsync();
             }
+
+            // // Sign out any existing authentication data (forces new user)
+            // if (AuthenticationService.Instance.IsSignedIn)
+            // {
+            //     AuthenticationService.Instance.SignOut(true);
+            //     Debug.Log("Signed out previous user, forcing new authentication.");
+            // }
             
             // Register event callback
             AuthenticationService.Instance.SignedIn += () => 
@@ -243,6 +267,11 @@ public class menuManager : MonoBehaviour
             // Output players
             PrintPlayers(hostLobby);
 
+
+            // save this lobby as last joined lobby
+            PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
+            PlayerPrefs.Save();
+
             return true;
 
          } catch (LobbyServiceException e) 
@@ -319,6 +348,10 @@ public class menuManager : MonoBehaviour
             // Output player count
             PrintPlayers(joinedLobby);
 
+            // save this lobby as last joined lobby for
+            PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
+            PlayerPrefs.Save();
+
             return true;
 
         } catch (LobbyServiceException e)
@@ -384,8 +417,16 @@ public class menuManager : MonoBehaviour
         {
             if (joinedLobby != null)
             {
+                // Set this lobby as last joined lobby for reconnection
+                lastGameLobbyId = joinedLobby.Id;
+                wasDisconnected = true;
+                PlayerPrefs.SetString("LastLobbyId", lastGameLobbyId);
+                PlayerPrefs.Save();
+
+                // Leave the lobby
                 await LobbyService.Instance.RemovePlayerAsync(joinedLobby.Id, AuthenticationService.Instance.PlayerId);
                 Debug.Log("Left lobby: " + joinedLobby.Name);
+
 
                 // Shut down Network Manager connection
                 if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
@@ -485,38 +526,32 @@ public class menuManager : MonoBehaviour
             Debug.Log("Player not signed in, cannot check for reconnection");
             return false;
         }
-        
+
         try
         {
-            // Query for lobbies where this player is still listed
-            // This only works if the lobby hasn't removed the player yet
-            QueryLobbiesOptions options = new QueryLobbiesOptions
+            // Retrieve last joined lobby ID from PlayerPrefs
+            string lastLobbyId = PlayerPrefs.GetString("LastJoinedLobby", "");
+
+            if (!string.IsNullOrEmpty(lastLobbyId))
             {
-                Filters = new List<QueryFilter>
+                // Attempt to get the lobby by ID
+                Lobby reconnectionLobby = await LobbyService.Instance.GetLobbyAsync(lastLobbyId);
+                if (reconnectionLobby != null)
                 {
-                    new QueryFilter(QueryFilter.FieldOptions.MaxPlayers, AuthenticationService.Instance.PlayerId, QueryFilter.OpOptions.EQ)
+                    lastGameLobbyId = lastLobbyId;
+                    wasDisconnected = true;
+
+                    // Show UI with option to reconnect
+                    menuUIManagerInstance.ShowReconnectionOption(reconnectionLobby.Name);
+                    return true;
                 }
-            };
-            
-            QueryResponse response = await LobbyService.Instance.QueryLobbiesAsync(options);
-            
-            if (response.Results.Count > 0)
-            {
-                // Found a lobby with this player
-                Lobby reconnectionLobby = response.Results[0];
-                lastGameLobbyId = reconnectionLobby.Id;
-                wasDisconnected = true;
-                
-                // Show reconnection UI
-                menuUIManagerInstance.ShowReconnectionOption(reconnectionLobby.Name);
-                return true;
             }
         }
         catch (LobbyServiceException e)
         {
             Debug.LogError($"Error checking for reconnection: {e.Message}");
         }
-        
+
         return false;
     }
 

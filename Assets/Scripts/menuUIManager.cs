@@ -25,6 +25,10 @@ public class menuUIManager : MonoBehaviour
     [SerializeField] private TMPro.TMP_InputField codeInputBox;
     [SerializeField] private Button createLobbyButton;
     [SerializeField] private Button joinLobbyWithCodeButton;
+    [SerializeField] private GameObject reconnectionPanel;
+    [SerializeField] private TextMeshProUGUI reconnectionLobbyText;
+    [SerializeField] private TextMeshProUGUI reconnectionErrorText;
+    [SerializeField] private Button reconnectionButton;
 
     // Lobby Screen
     [SerializeField] private GameObject lobbyUI;
@@ -348,18 +352,46 @@ public class menuUIManager : MonoBehaviour
 
     public void ShowReconnectionOption(string lobbyName)
     {
-        // Show UI for reconnection option
-        // e.g., reconnectionPanel.SetActive(true);
-        //       reconnectionLobbyText.text = "Disconnected from game: " + lobbyName;
+        if (reconnectionPanel != null)
+        {
+            reconnectionPanel.SetActive(true); // Show reconnection UI
+        }
+
+        if (reconnectionLobbyText != null)
+        {
+            reconnectionLobbyText.text = "Disconnected from: " + lobbyName + "\nWould you like to reconnect?";
+        }
+
+        Debug.Log("Reconnection option displayed for lobby: " + lobbyName);
     }
 
     public async void OnReconnectButtonClicked()
     {
-        // Handle reconnect button click
-        bool success = await menuManager.Instance.ReconnectToGame();
-        if (!success)
+        if (menuManager.Instance == null)
         {
-            // Show error message
+            Debug.LogError("menuManager instance not found!");
+            return;
+        }
+
+        reconnectionButton.interactable = false; // Disable button to prevent spam clicking
+        bool success = await menuManager.Instance.ReconnectToGame();
+
+        if (success)
+        {
+            Debug.Log("Reconnected successfully!");
+            if (reconnectionPanel != null)
+            {
+                reconnectionPanel.SetActive(false); // Hide reconnection UI
+            }
+        }
+        else
+        {
+            Debug.LogError("Failed to reconnect!");
+            if (reconnectionErrorText != null)
+            {
+                reconnectionErrorText.text = "Failed to reconnect. The game may have ended.";
+            }
+            reconnectionButton.interactable = true; // Re-enable button if failed
         }
     }
 }

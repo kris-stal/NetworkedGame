@@ -2,7 +2,6 @@ using UnityEngine;
 using Unity.Netcode;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
-using UnityEngine.UIElements.Experimental;
 
 // Main Game Manager script for handling game and networking logic
 public class gameManager : NetworkBehaviour
@@ -51,7 +50,7 @@ public class gameManager : NetworkBehaviour
     
     // Other Network Variables
     [SerializeField] private gameUIManager gameUIManagerInstance;  // Get gameUIManager script
-    [SerializeField] private CloudSaveManager cloudSaveManager // Get Cloud Save Manager
+    [SerializeField] private CloudSaveManager cloudSaveManager; // Get Cloud Save Manager
     
     [System.Serializable] // Class to store state of game
     public class GameState
@@ -94,7 +93,7 @@ public class gameManager : NetworkBehaviour
     private Dictionary<ulong, float> playerPings = new Dictionary<ulong, float>(); // Player pings dictionary
 
     private Dictionary<ulong, string> playerIds = new Dictionary<ulong, string>(); // Maps NetworkObject IDs to Auth IDs
-    private Dictionary<string, GamePlayerState> disconnectedPlayerStates = new Dictionary<string, GamePlayerState>(); // Stores state of disconnected players
+    private Dictionary<string, PlayerState> disconnectedPlayerStates = new Dictionary<string, PlayerState>();
     private NetworkVariable<bool> waitingForReconnection = new NetworkVariable<bool>(false);
     private float reconnectionWaitTime = 30f; // Time to wait for reconnection before ending game
     private float reconnectionTimer = 0f;
@@ -390,6 +389,7 @@ public class gameManager : NetworkBehaviour
 
     private GameState CaptureGameState()
     {
+        // Capture game state
         GameState state = new GameState
         {
             gameTime = Time.time,
@@ -400,59 +400,71 @@ public class gameManager : NetworkBehaviour
             timestamp = System.DateTime.Now
         };
 
-         // Capture player states
-    foreach (GameObject playerObj in playerObjects)
-    {
-        if (playerObj != null)
+        // Capture player states
+        foreach (GameObject playerObj in playerObjects)
         {
-            ulong clientId = playerObj.GetComponent<NetworkObject>().OwnerClientId;
-            
-            PlayerState playerState = new PlayerState
+            if (playerObj != null)
             {
-                clientId = clientId,
-                authId = playerIds.TryGetValue(clientId, out string authId) ? authId : "unknown",
-                position = playerObj.transform.position,
-                isConnected = true,
-                score = clientId == 1 ? playerScore1.Value : playerScore2.Value
-            };
-            
-            // Get velocity if available
-            if (playerObj.TryGetComponent<Rigidbody>(out Rigidbody rb))
-            {
-                playerState.velocity = rb.linearVelocity;
-                playerState.angularVelocity = rb.angularVelocity;
+                ulong clientId = playerObj.GetComponent<NetworkObject>().OwnerClientId;
+                
+                PlayerState playerState = new PlayerState
+                {
+                    clientId = clientId,
+                    authId = playerIds.TryGetValue(clientId, out string authId) ? authId : "unknown",
+                    position = playerObj.transform.position,
+                    isConnected = true,
+                    score = clientId == 1 ? playerScore1.Value : playerScore2.Value
+                };
+                
+                // Get velocity if available
+                if (playerObj.TryGetComponent<Rigidbody>(out Rigidbody rb))
+                {
+                    playerState.velocity = rb.linearVelocity;
+                    playerState.angularVelocity = rb.angularVelocity;
+                }
+                
+                state.players.Add(playerState);
             }
-            
-            state.players.Add(playerState);
         }
-    }
-    
-    
+
+        // Capture ball state
+        if (theBall != null)
+        {
+            state.ballPosition = theBall.transform.position;
+            
+            if (theBall.TryGetComponent<Rigidbody>(out Rigidbody ballRb))
+            {
+                state.ballVelocity = ballRb.linearVelocity;
+                state.ballAngularVelocity = ballRb.angularVelocity;
+            }
+        }
+        
+        return state; // Return the captured state
     }
 
     // Method to restore game state
-private void RestoreGameState(GameState state)
-{
-    if (!IsServer) return;
-    
-    // Restore game state variables
-    gameInProgress.Value = state.gameInProgress;
-    gameOver.Value = state.gameOver;
-    winnerClientId.Value = state.winnerClientId;
-    countdownTimer.Value = state.countdownValue;
-    
-    // Restore ball state
-    if (theBall != null && state.ballPosition != Vector3.zero)
+    private void RestoreGameState(GameState state)
     {
-        theBall.transform.position = state.ballPosition;
+        if (!IsServer) return;
         
-        if (theBall.TryGetComponent<Rigidbody>(out Rigidbody ballRb))
+        // Restore game state variables
+        gameInProgress.Value = state.gameInProgress;
+        gameOver.Value = state.gameOver;
+        winnerClientId.Value = state.winnerClientId;
+        countdownTimer.Value = state.countdownValue;
+        
+        // Restore ball state
+        if (theBall != null && state.ballPosition != Vector3.zero)
         {
-            ballRb.linearVelocity = state.ballVelocity;
-            ballRb.angularVelocity = state.ballAngularVelocity;
-            ballRb.isKinematic = !gameInProgress.Value;
+            theBall.transform.position = state.ballPosition;
+            
+            if (theBall.TryGetComponent<Rigidbody>(out Rigidbody ballRb))
+            {
+                ballRb.linearVelocity = state.ballVelocity;
+                ballRb.angularVelocity = state.ballAngularVelocity;
+                ballRb.isKinematic = !gameInProgress.Value;
+            }
         }
-    }
     
     // Restore connected player states
     foreach (PlayerState playerState in state.players)
@@ -470,7 +482,7 @@ private void RestoreGameState(GameState state)
                 if (playerObj.TryGetComponent<Rigidbody>(out Rigidbody rb) && 
                     playerState.velocity != Vector3.zero)
                 {
-                    rb.velocity = playerState.velocity;
+                    rb.linearVelocity = playerState.velocity;
                     rb.angularVelocity = playerState.angularVelocity;
                 }
                 
@@ -492,40 +504,9 @@ private void RestoreGameState(GameState state)
 }
 
 
-    private void OnClientDisconnect(ulong clientId)
+    private async void OnClientDisconnect(ulong clientId)
     {
         if (!IsServer) return; // Only server handles this
-
-        // // Find player's auth ID
-        // string authId = null;
-        // foreach (var pair in playerIds)
-        // {
-        //     if (pair.Key == clientId)
-        //     {
-        //         authId = pair.Value;
-        //         break;
-        //     }
-        // }
-
-        // Find player's auth ID
-        if (!playerIds.TryGetValue(clientId, out string authId))
-        {
-            Debug.LogError($"Could not find authId for disconnected client {clientId}");
-            return;
-        }
-        // // If not player auth ID
-        // if (authId == null)
-        // {
-        //     Debug.LogError($"Could not find authId for disconnected client {clientId}");
-        //     return;
-        // }
-
-        GameState gameState = CaptureGameState();
-
-        // Save to cloud
-        cloudSaveManager.SaveGameState(gameState);
-
-        PlayerState playerState = gameState.Players.Find(p => p.clientId);
 
         // Ignore host (server) disconnects
         if (clientId == NetworkManager.Singleton.LocalClientId)
@@ -541,40 +522,51 @@ private void RestoreGameState(GameState state)
             return;
         }
 
+        // Capture the full game state
+        GameState gameState = CaptureGameState();
 
-        // Save state for disconnected player
-        GameState fullGameState = CaptureGameState();
+        // Save to cloud
+        await cloudSaveManager.SaveGameState(gameState);
+
+        // Find the disconnected player's state in the game state
+        PlayerState playerState = gameState.players.Find(p => p.clientId == clientId);
 
 
-        GameState playerState = new GameState
-        {
-            authId = authId,
-            clientId = clientId,
-            disconnectTime = Time.time,
-            score = clientId == 1 ? playerScore1.Value : playerScore2.Value,
-            position = FindPlayerByClientId(clientId)?.transform.position ?? Vector3.zero
-        }; 
-        
-        disconnectedPlayerStates[authId] = playerState;
-        
-        
-        // Start reconnection timer if not already waiting
-        if (!waitingForReconnection.Value)
-        {
-            waitingForReconnection.Value = true;
-            reconnectionTimer = reconnectionWaitTime;
-            
-            // Pause the game
-            if (gameInProgress.Value)
+        if (playerState != null)
             {
-                gameInProgress.Value = false;
+                // Store disconnected player state
+                PlayerState disconnectedState = new PlayerState
+                {
+                    authId = authId,
+                    clientId = clientId,
+                    position = playerState.position,
+                    velocity = playerState.velocity,
+                    angularVelocity = playerState.angularVelocity,
+                    score = playerState.score,
+                    isConnected = false,
+                    disconnectTime = Time.time
+                };
+                disconnectedPlayerStates[authId] = disconnectedState;
 
-                // Show waiting for player message
-                ShowWaitingForPlayerClientRpc();
+
+                // Start reconnection timer if not already waiting
+                if (!waitingForReconnection.Value)
+                {
+                    waitingForReconnection.Value = true;
+                    reconnectionTimer = reconnectionWaitTime;
+                    
+                    // Pause the game
+                    if (gameInProgress.Value)
+                    {
+                        gameInProgress.Value = false;
+                        
+                        // Show waiting for player message
+                        ShowWaitingForPlayerClientRpc();
+                    }
+                }
+                
+                Debug.Log($"Player {clientId} disconnected. Stored state and waiting for reconnection.");
             }
-        }
-        
-        Debug.Log($"Player {clientId} disconnected. Stored state and waiting for reconnection.");   
     }
 
     private void OnClientConnect(ulong clientId)
@@ -606,14 +598,14 @@ private void RestoreGameState(GameState state)
         playerIds[clientId] = authId;
         
         // Check if this is a reconnecting player
-        if (disconnectedPlayerStates.TryGetValue(authId, out GamePlayerState state))
+        if (disconnectedPlayerStates.TryGetValue(authId, out PlayerState state))
         {
             // Handle reconnection
             HandlePlayerReconnection(clientId, authId, state);
         }
     }
 
-    private void HandlePlayerReconnection(ulong clientId, string authId, GamePlayerState state)
+    private void HandlePlayerReconnection(ulong clientId, string authId, PlayerState state)
     {
         if (!IsServer) return; // Only server handles this
         
@@ -624,7 +616,7 @@ private void RestoreGameState(GameState state)
         if (playerObj != null)
         {
             // Restore Position
-            playerObj.transform.position = state.positon;
+            playerObj.transform.position = state.position;
 
             // Restore Score
             if (clientId == 1)
@@ -648,8 +640,6 @@ private void RestoreGameState(GameState state)
             // Resume game after countdown
             StartReconnectionCountdown();
         }
-
-        // RestorePlayerState();
     }
 
     private void StartReconnectionCountdown()
@@ -693,10 +683,10 @@ private void RestoreGameState(GameState state)
                     NetworkObject playerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
                     if (playerObject.IsOwner)
                     {
-                        playerObject.Despawn(true); // Despawn on network
+                        RequestDespawnServerRpc(playerObject);// Despawn on network
                     }
 
-                    // Discconet
+                    // Disconnect
                     NetworkManager.Singleton.Shutdown();
 
                     // Load lobby scene again
@@ -968,7 +958,7 @@ private void RestoreGameState(GameState state)
         RegisterPlayer(clientId, authId);
         
         // If we're waiting for reconnection, check if this player was disconnected
-        if (waitingForReconnection.Value && disconnectedPlayerStates.TryGetValue(authId, out GamePlayerState state))
+        if (waitingForReconnection.Value && disconnectedPlayerStates.TryGetValue(authId, out PlayerState state))
         {
             // Restore their state (handled in RegisterPlayer)
             
@@ -980,7 +970,7 @@ private void RestoreGameState(GameState state)
         }
     }
 
-
+    [ClientRpc]
     private void RequestAuthenticationClientRpc(ClientRpcParams clientRpcParams = default)
     {
         // Client should call SendAuthIdServerRpc with their auth ID
@@ -1069,6 +1059,16 @@ private void RestoreGameState(GameState state)
                 }
                 Debug.Log($"Reset player {i} to position {playerSpawnPos[i]}");
             }
+        }
+    }
+
+    // Despawn player object
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestDespawnServerRpc(NetworkObjectReference objectRef)
+    {
+        if (objectRef.TryGet(out NetworkObject networkObject))
+        {
+            networkObject.Despawn();
         }
     }
 }
