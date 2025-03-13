@@ -5,10 +5,10 @@ using UnityEngine.SceneManagement;
 using System.IO;
 
 // Main Game Manager script for handling game and networking logic
-public class gameManager : NetworkBehaviour
+public class GameManager : NetworkBehaviour
 {
     // Singleton Pattern for easy access to the gameManager from other scripts and to prevent duplicates
-    public static gameManager Instance { get; private set; }
+    public static GameManager Instance { get; private set; }
 
     // Variables
     // Network variables for player scores
@@ -48,10 +48,10 @@ public class gameManager : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
+
     
     // Other Network Variables
     [SerializeField] private gameUIManager gameUIManagerInstance;  // Get gameUIManager script
-    [SerializeField] private PlayerProfileManager playerProfileManager; // Get player profile script
     
     [System.Serializable] // Class to store state of game
     public class GameState
@@ -94,10 +94,7 @@ public class gameManager : NetworkBehaviour
     private Dictionary<ulong, float> playerPings = new Dictionary<ulong, float>(); // Player pings dictionary
 
     private Dictionary<ulong, string> playerIds = new Dictionary<ulong, string>(); // Maps NetworkObject IDs to Auth IDs
-    private Dictionary<string, PlayerState> disconnectedPlayerStates = new Dictionary<string, PlayerState>();
-    private NetworkVariable<bool> waitingForReconnection = new NetworkVariable<bool>(false);
-    private float reconnectionWaitTime = 30f; // Time to wait for reconnection before ending game
-    private float reconnectionTimer = 0f;
+
 
     // Game Variables
     GameObject theBall; // Get ball Game Object
@@ -117,7 +114,6 @@ public class gameManager : NetworkBehaviour
     private void Awake()
     {
         // Ensuring Singleton Pattern
-        // Check this script already exists
         if (Instance == null)
         {
             // If not, set this instance as the singleton
@@ -127,6 +123,7 @@ public class gameManager : NetworkBehaviour
         {
             // If an instance already exists, destroy the duplicate
             Destroy(gameObject);
+            return;
         }
     }
 
@@ -242,41 +239,7 @@ public class gameManager : NetworkBehaviour
         {
             FreezeBallAndPlayers();
         }
-
-        // Handle Reconnection Timer
-        if (IsServer && waitingForReconnection.Value)
-        {
-        reconnectionTimer -= Time.deltaTime;
-    
-        // Update clients with the timer
-        UpdateReconnectionTimerClientRpc(Mathf.CeilToInt(reconnectionTimer));
-        
-        if (reconnectionTimer <= 0)
-        {
-            // Player didn't reconnect in time
-            waitingForReconnection.Value = false;
-            
-            // End game or handle as appropriate
-            if (disconnectedPlayerStates.Count > 0)
-            {
-                // For simplicity, award win to the remaining player
-                ulong remainingClientId = playerObjects.Find(p => p != null && 
-                                                        !disconnectedPlayerStates.ContainsKey(
-                                                            playerIds[p.GetComponent<NetworkObject>().OwnerClientId]))
-                                        ?.GetComponent<NetworkObject>().OwnerClientId ?? 0;
-                
-                if (remainingClientId != 0)
-                {
-                    GameOver(remainingClientId);
-                }
-                
-                // Clear disconnected states
-                disconnectedPlayerStates.Clear();
-            }
-        }
     }
-    }
-
 
     // Start initial countdown
     private void StartInitialCountdown()
@@ -290,10 +253,10 @@ public class gameManager : NetworkBehaviour
         winnerScreenShown = false;
         
         // Reset player positions
-        ResetPlayersPositionServerRpc();
+        ResetPlayersServerRpc();
         
         // Reset ball position
-        ResetBallPositionServerRpc();
+        ResetBallServerRpc();
         
         Debug.Log("Starting initial countdown: " + INITIAL_COUNTDOWN + " seconds");
     }
@@ -307,10 +270,10 @@ public class gameManager : NetworkBehaviour
             ballRb.isKinematic = true;
         }
         
-        // Freeze players - now using playerNetwork instead of playerController
+        // Freeze players - now using PlayerNetwork instead of playerController
         foreach (GameObject player in playerObjects)
         {
-            if (player != null && player.TryGetComponent<playerNetwork>(out playerNetwork controller))
+            if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
             {
                 controller.SetMovementEnabled(gameInProgress.Value);
             }
@@ -353,22 +316,6 @@ public class gameManager : NetworkBehaviour
         }
     }
 
-    // public List<string> GetPlayerNames()
-    // {
-    //     List<string> names = new List<string>();
-    //     Lobby currentLobby = hostLobby != null ? hostLobby : joinedLobby;
-        
-    //     if (currentLobby != null)
-    //     {
-    //         foreach (Player player in currentLobby.Players)
-    //         {
-    //             names.Add(player.Data["PlayerName"].Value);
-    //         }
-    //     }
-        
-    //     return names;
-    // }
-
     // Helper method to get the client ID of a player GameObject
     public ulong GetPlayerClientId(GameObject playerObject)
     {
@@ -406,7 +353,6 @@ public class gameManager : NetworkBehaviour
         }
         return null;
     }
-
 
 
     private GameState CaptureGameState()
@@ -464,69 +410,7 @@ public class gameManager : NetworkBehaviour
         return state; // Return the captured state
     }
 
-    // Method to restore game state
-    private void RestoreGameState(GameState state)
-    {
-        if (!IsServer) return;
-        
-        // Restore game state variables
-        gameInProgress.Value = state.gameInProgress;
-        gameOver.Value = state.gameOver;
-        winnerClientId.Value = state.winnerClientId;
-        countdownTimer.Value = state.countdownValue;
-        
-        // Restore ball state
-        if (theBall != null && state.ballPosition != Vector3.zero)
-        {
-            theBall.transform.position = state.ballPosition;
-            
-            if (theBall.TryGetComponent<Rigidbody>(out Rigidbody ballRb))
-            {
-                ballRb.linearVelocity = state.ballVelocity;
-                ballRb.angularVelocity = state.ballAngularVelocity;
-                ballRb.isKinematic = !gameInProgress.Value;
-            }
-        }
-    
-    // Restore connected player states
-    foreach (PlayerState playerState in state.players)
-    {
-        if (playerState.isConnected)
-        {
-            GameObject playerObj = FindPlayerByClientId(playerState.clientId);
-            
-            if (playerObj != null)
-            {
-                // Restore position
-                playerObj.transform.position = playerState.position;
-                
-                // Restore velocity if applicable
-                if (playerObj.TryGetComponent<Rigidbody>(out Rigidbody rb) && 
-                    playerState.velocity != Vector3.zero)
-                {
-                    rb.linearVelocity = playerState.velocity;
-                    rb.angularVelocity = playerState.angularVelocity;
-                }
-                
-                // Restore score
-                if (playerState.clientId == 1)
-                {
-                    playerScore1.Value = playerState.score;
-                }
-                else if (playerState.clientId == 2)
-                {
-                    playerScore2.Value = playerState.score;
-                }
-            }
-        }
-    }
-    
-    // Notify clients that game state has been restored
-    NotifyGameStateRestoredClientRpc();
-}
-
-
-    private void OnClientDisconnect(ulong clientId)
+    private async void OnClientDisconnect(ulong clientId)
     {
         if (!IsServer) return; // Only server handles this
 
@@ -534,7 +418,8 @@ public class gameManager : NetworkBehaviour
         if (clientId == NetworkManager.Singleton.LocalClientId)
         {
             Debug.Log("Host (server) is disconnecting, ending game");
-            NetworkManager.Singleton.Shutdown();
+            await LobbyManager.Instance.LeaveLobby(); // delete lobby
+            NetworkManager.Singleton.Shutdown(); // end network connection
             return;
         }
 
@@ -545,40 +430,11 @@ public class gameManager : NetworkBehaviour
             return;
         }
 
+        Debug.Log($"Player {clientId} with authId {authId} disconnected");
+
         // Capture the full game state
         GameState gameState = CaptureGameState();
-
-        // Save locally
         SaveGameStateLocally(gameState);
-
-        // Find the disconnected player's state in the game state
-        PlayerState playerState = gameState.players.Find(p => p.clientId == clientId);
-        if (playerState != null)
-            {
-                // Store disconnected player state
-                disconnectedPlayerStates[authId] = playerState;
-                if (!waitingForReconnection.Value)
-                {
-                    waitingForReconnection.Value = true;
-                    reconnectionTimer = reconnectionWaitTime;
-                    gameInProgress.Value = false;
-                    ShowWaitingForPlayerClientRpc();
-                }
-
-                // PlayerState disconnectedState = new PlayerState
-                // {
-                //     authId = authId,
-                //     clientId = clientId,
-                //     position = playerState.position,
-                //     velocity = playerState.velocity,
-                //     angularVelocity = playerState.angularVelocity,
-                //     score = playerState.score,
-                //     isConnected = false,
-                //     disconnectTime = Time.time
-                // };
-            
-                Debug.Log($"Player {clientId} disconnected. Stored state and waiting for reconnection.");
-            }
     }
 
     private void OnClientConnect(ulong clientId)
@@ -592,105 +448,8 @@ public class gameManager : NetworkBehaviour
         // This allows for proper authentication flow from the client
         
         // Notify the client that they need to authenticate
-        RequestAuthenticationClientRpc(new ClientRpcParams
-        {
-            Send = new ClientRpcSendParams
-            {
-                TargetClientIds = new ulong[] { clientId }
-            }
-        });
     }
-
-
-    // This should be called after authentication when a player connects to the game
-    public void RegisterPlayer(ulong clientId)
-    {
-        if (!IsServer) return;
-
-        string playerName = playerProfileManager?.GetPlayerName() ?? "Unknown"; // Fetch name locally
-        playerIds[clientId] = playerName;
-
-        if (disconnectedPlayerStates.TryGetValue(playerName, out PlayerState state))
-        {
-            HandlePlayerReconnection(clientId, playerName, state);
-        }
-        else if (File.Exists(TEMP_SAVE_PATH))
-        {
-            GameState savedState = LoadGameStateLocally();
-            if (savedState != null)
-            {
-                RestoreGameState(savedState);
-                File.Delete(TEMP_SAVE_PATH);
-                Debug.Log("Game state restored from local save.");
-            }
-        }
-    }
-
-    private void HandlePlayerReconnection(ulong clientId, string authId, PlayerState state)
-    {
-        if (!IsServer) return; // Only server handles this
-        
-        Debug.Log($"Player {authId} reconnected with client ID {clientId}");
-
-        // Find player GameObject
-        GameObject playerObj = FindPlayerByClientId(clientId);
-        if (playerObj != null)
-        {
-            // Restore Position
-            playerObj.transform.position = state.position;
-
-            // Restore Score
-            if (clientId == 1)
-            {
-                playerScore1.Value = state.score;
-            }
-            else if (clientId == 2)
-            {
-                playerScore2.Value = state.score;
-            }
-        }
-        
-        // Remove from disconnected list
-        disconnectedPlayerStates.Remove(authId);
-        
-        // If no more disconnected players, continue game
-        if (disconnectedPlayerStates.Count == 0 && waitingForReconnection.Value)
-        {
-            waitingForReconnection.Value = false;
-            
-            // Resume game after countdown
-            StartReconnectionCountdown();
-        }
-    }
-
-    private void StartReconnectionCountdown()
-    {
-        if (!IsServer) return;
-        
-        // Reset countdown timer
-        countdownTimer.Value = 5f;
-        
-        // Hide waiting message
-        HideWaitingForPlayerClientRpc();
-        
-        // Show countdown instead
-        // The existing countdown logic in Update will handle the rest
-    }
-
-    // Find player's object via a client ID
-    private GameObject FindPlayerByClientId(ulong clientId)
-    {
-        foreach (GameObject player in playerObjects)
-        {
-            if (player != null && player.GetComponent<NetworkObject>().OwnerClientId == clientId)
-            {
-                return player;
-            }
-        }
-        return null;
-    }
-
-
+    
     // Leave game
     public void LeaveGame()
     {
@@ -766,8 +525,8 @@ public class gameManager : NetworkBehaviour
         countdownTimer.Value = RESET_COUNTDOWN;
         
         // Reset positions
-        ResetPlayersPositionServerRpc();
-        ResetBallPositionServerRpc();
+        ResetPlayersServerRpc();
+        ResetBallServerRpc();
         
         Debug.Log("Starting reset countdown: " + RESET_COUNTDOWN + " seconds");
     }
@@ -807,7 +566,7 @@ public class gameManager : NetworkBehaviour
         {
             foreach (GameObject player in playerObjects)
             {
-                if (player != null && player.TryGetComponent<playerNetwork>(out playerNetwork controller))
+                if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
                 {
                     controller.SetMovementEnabled(true);
                 }
@@ -830,7 +589,6 @@ public class gameManager : NetworkBehaviour
     // Remote Procedure Calls
     // Network Handling Calls
 
-
     // Client calls this to update their ping on the server
     [ServerRpc(RequireOwnership = false)]
     private void UpdatePingServerRpc(int pingValue, ServerRpcParams serverRpcParams = default)
@@ -840,9 +598,6 @@ public class gameManager : NetworkBehaviour
         
         // Broadcast the updated ping to all clients
         UpdatePingClientRpc(clientId, pingValue);
-        
-        // Debug log to verify the ping is being received
-        // Debug.Log($"Server received ping {pingValue}ms from client {clientId}");
     }
 
 
@@ -879,33 +634,6 @@ public class gameManager : NetworkBehaviour
         playerPings[clientId] = pingValue;
     }
 
-    [ClientRpc]
-    private void ShowWaitingForPlayerClientRpc()
-    {
-        // Call your UI to display a waiting message
-        gameUIManagerInstance.ShowWaitingForReconnection(true);
-    }
-
-    [ClientRpc]
-    private void UpdateReconnectionTimerClientRpc(int seconds)
-    {
-        // Update UI with reconnection timer
-        gameUIManagerInstance.UpdateReconnectionTimerText(seconds.ToString());
-    }
-    
-    [ClientRpc]
-    private void HideWaitingForPlayerClientRpc()
-    {
-        gameUIManagerInstance.ShowWaitingForReconnection(false);
-    }
-
-    [ClientRpc]
-    private void NotifyGameStateRestoredClientRpc()
-    {
-        Debug.Log("Game state has been restored");
-        // You could trigger a UI notification here if needed
-    }
-
 
     // Game Handling Calls
     // Start the game when countdown is complete
@@ -923,10 +651,10 @@ public class gameManager : NetworkBehaviour
             rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
         }
 
-        // Enable player controllers - now using playerNetwork
+        // Enable player controllers - now using PlayerNetwork
         foreach (GameObject player in playerObjects)
         {
-            if (player != null && player.TryGetComponent<playerNetwork>(out playerNetwork controller))
+            if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
             {
                 controller.SetMovementEnabled(true);
             }
@@ -941,82 +669,59 @@ public class gameManager : NetworkBehaviour
     {
         Debug.Log("Game started!");
         
-        // Enable player controllers - now using playerNetwork
+        // Enable player controllers - now using PlayerNetwork
         foreach (GameObject player in playerObjects)
         {
-            if (player != null && player.TryGetComponent<playerNetwork>(out playerNetwork controller))
+            if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
             {
                 controller.SetMovementEnabled(true);
             }
         }
     }
 
-    // Reset Ball Position
+    // Reset Ball (Position + Force)
     [ServerRpc]
-    private void ResetBallPositionServerRpc()
+    private void ResetBallServerRpc()
     {
-        if (!IsServer) return;
-        
         if (theBall != null)
         {
+            // Reset position
             theBall.transform.position = new Vector3(0, 1, 0);
+            
+            // Reset velocity
             if (theBall.TryGetComponent<Rigidbody>(out Rigidbody rb))
             {
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
+                
+                // Apply random force
+                rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
             }
-        }
-        
-        // Notify clients
-        ResetBallPositionClientRpc();
-    }
-
-    // Client sends their auth ID to the server
-    [ServerRpc(RequireOwnership = false)]
-    public void SendAuthIdServerRpc(string authId, ServerRpcParams serverRpcParams = default)
-    {
-        ulong clientId = serverRpcParams.Receive.SenderClientId;
-        RegisterPlayer(clientId);
-        
-        // If we're waiting for reconnection, check if this player was disconnected
-        if (waitingForReconnection.Value && disconnectedPlayerStates.TryGetValue(authId, out PlayerState state))
-        {
-            // Restore their state (handled in RegisterPlayer)
             
-            // If this was the last disconnected player, resume game
-            if (disconnectedPlayerStates.Count == 1) // Will be 0 after RegisterPlayer removes this entry
-            {
-                StartReconnectionCountdown();
-            }
+            // Notify clients
+            ResetBallClientRpc();
         }
     }
 
+    // Notify players
     [ClientRpc]
-    private void RequestAuthenticationClientRpc(ClientRpcParams clientRpcParams = default)
-    {
-        // Client should call SendAuthIdServerRpc with their auth ID
-        // This would typically come from their authentication service
-        // For testing, you could use a placeholder
-        string myAuthId = "auth_" + NetworkManager.Singleton.LocalClientId;
-        SendAuthIdServerRpc(myAuthId);
-    }
-    
-    [ClientRpc]
-    private void ResetBallPositionClientRpc()
+    private void ResetBallClientRpc()
     {
         // Any client-side logic needed when ball is reset
-        Debug.Log("Ball position reset");
+        Debug.Log("Ball position reset on client");
     }
 
-    // Reset Player Positions
+
+    // Reset Players (Position + Velocity)
     [ServerRpc]
-    private void ResetPlayersPositionServerRpc()
+    private void ResetPlayersServerRpc()
     {
         if (!IsServer) return;
 
         int playerCount = playerObjects.Count;
         Debug.Log($"Resetting {playerCount} players");
 
+        // Reset positions and velocities of all players
         for (int i = 0; i < playerCount && i < playerSpawnPos.Count; i++)
         {
             if (playerObjects[i] != null)
@@ -1033,54 +738,15 @@ public class gameManager : NetworkBehaviour
         }
         
         // Notify clients
-        ResetPlayersPositionClientRpc();
+        ResetPlayersClientRpc();
     }
-    
+
+    // Notify Players
     [ClientRpc]
-    private void ResetPlayersPositionClientRpc()
+    private void ResetPlayersClientRpc()
     {
         // Any client-side logic needed when players are reset
-        Debug.Log("Player positions reset");
-    }
-
-
-    // Reset Ball
-    [ServerRpc]
-    private void ResetBallServerRpc()
-    {
-        if (theBall != null)
-        {
-            theBall.transform.position = new Vector3( 0, 1, 0);
-            if (theBall.TryGetComponent<Rigidbody> (out Rigidbody rb))
-            {
-                rb.linearVelocity = Vector3.zero;
-                rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
-            }
-        }
-    }
-
-    // Reset Player
-    [ServerRpc]
-    private void ResetPlayerServerRpc()
-    {
-        if (!IsServer) return;
-
-        int playerCount = playerObjects.Count;
-        Debug.Log($"Resetting {playerCount} players");
-
-        for (int i = 0; i < playerCount; i++)
-        {
-            if (playerObjects[i] != null)
-            {
-                // Reset position and velocity
-                playerObjects[i].transform.position = playerSpawnPos[i];
-                if (playerObjects[i].TryGetComponent<Rigidbody>(out Rigidbody rb))
-                {
-                    rb.linearVelocity = Vector3.zero;
-                }
-                Debug.Log($"Reset player {i} to position {playerSpawnPos[i]}");
-            }
-        }
+        Debug.Log("Player positions reset on client");
     }
 
     // Despawn player object

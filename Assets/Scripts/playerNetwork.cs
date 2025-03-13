@@ -1,8 +1,11 @@
+using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
+using System.Linq;
+using System.Collections.Generic;
 
 // Main script for player objects
-public class playerNetwork : NetworkBehaviour
+public class PlayerNetwork : NetworkBehaviour
 {
     // Variables
     [SerializeField] private float acceleration = 5f;
@@ -11,6 +14,14 @@ public class playerNetwork : NetworkBehaviour
     public Rigidbody rb; // player rigidbody
     public Vector3 InputKey; // input keys
     private bool movementEnabled = false; // control if movement is enabled
+
+    // Create a periodic reconciliation timer
+    private float reconciliationTimer = 0f;
+    private const float RECONCILIATION_INTERVAL = 0.1f; // Reconcile every half second
+
+    // Reconciliation threshold - only correct if error is greater than this
+    [SerializeField] private float positionErrorThreshold = 0.1f; // Lower than your current 0.5f
+    
     
 
     // awake is called when script is first made
@@ -106,6 +117,17 @@ public class playerNetwork : NetworkBehaviour
         if (Input.GetKeyDown(KeyCode.R)) {
             TestServerRpc();
         }
+
+        // Only for the owner clients
+        if (IsOwner)
+        {
+            reconciliationTimer += Time.deltaTime;
+            if (reconciliationTimer >= RECONCILIATION_INTERVAL)
+            {
+                reconciliationTimer = 0f;
+                RequestServerPositionServerRpc();
+            }
+        }
     }
 
     private void FixedUpdate() 
@@ -169,7 +191,7 @@ public class playerNetwork : NetworkBehaviour
         if (collision.gameObject.CompareTag("Player") || collision.gameObject.CompareTag("Ball"))
         {
             // Get the other player's NetworkBehaviour component
-            playerNetwork otherPlayer = collision.gameObject.GetComponent<playerNetwork>();
+            PlayerNetwork otherPlayer = collision.gameObject.GetComponent<PlayerNetwork>();
             
             // Only apply force if we're colliding with another player
             if (otherPlayer != null)
@@ -226,6 +248,31 @@ public class playerNetwork : NetworkBehaviour
         }
     }
 
+    // Coroutine for smooth correction
+    private IEnumerator SmoothCorrection(Vector3 targetPos, Vector3 targetVel)
+    {
+        Vector3 startPos = transform.position;
+        Vector3 startVel = rb.linearVelocity;
+        float elapsed = 0f;
+        float duration = 0.1f; // Correction time in seconds
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            
+            // Lerp position and velocity
+            transform.position = Vector3.Lerp(startPos, targetPos, t);
+            rb.linearVelocity = Vector3.Lerp(startVel, targetVel, t);
+            
+            yield return null;
+        }
+        
+        // Ensure we end exactly at target values
+        transform.position = targetPos;
+        rb.linearVelocity = targetVel;
+    }
+
 
     // Server Rpc
     // When client calls ServerRpc function, the server runs the function NOT the client
@@ -254,17 +301,26 @@ public class playerNetwork : NetworkBehaviour
             rb.linearVelocity = rb.linearVelocity.normalized * maxSpeed;
         }
         
-        // Sync only to other clients, not back to the owner
+        // Create a list to store client IDs except the owner
+        List<ulong> targetClients = new List<ulong>();
+        foreach (ulong id in NetworkManager.ConnectedClientsIds)
+        {
+            if (id != OwnerClientId)
+            {
+                targetClients.Add(id);
+            }
+        }
+
+        // Send to all clients EXCEPT the owner using TargetClientIds (not NativeArray)
         var clientRpcParams = new ClientRpcParams
         {
             Send = new ClientRpcSendParams
             {
-                TargetClientIds = new ulong[] { OwnerClientId }
+                TargetClientIds = targetClients.ToArray()
             }
         };
         
-        SyncMovementClientRpc(transform.position, clientRpcParams);
-        SyncVelocityClientRpc(rb.linearVelocity, clientRpcParams);
+        SyncMovementClientRpc(transform.position, rb.linearVelocity, clientRpcParams);
     }
 
     // Asking for deceleration in movement
@@ -279,8 +335,26 @@ public class playerNetwork : NetworkBehaviour
             rb.AddForce(rb.linearVelocity * -deceleration, ForceMode.Force);
         }
         
-        SyncMovementClientRpc(transform.position);
-        SyncVelocityClientRpc(rb.linearVelocity);
+        // Create a list to store client IDs except the owner
+        List<ulong> targetClients = new List<ulong>();
+        foreach (ulong id in NetworkManager.ConnectedClientsIds)
+        {
+            if (id != OwnerClientId)
+            {
+                targetClients.Add(id);
+            }
+        }
+
+        // Send to all clients EXCEPT the owner
+        var clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = targetClients.ToArray()
+            }
+        };
+        
+        SyncMovementClientRpc(transform.position, rb.linearVelocity, clientRpcParams);
     }
 
     // Completely stop movement
@@ -328,5 +402,50 @@ public class playerNetwork : NetworkBehaviour
 
         // Update velocity for client
         rb.linearVelocity = newVelocity;
+    }
+
+    // Syncing movement to clients
+    [ClientRpc]
+    private void SyncMovementClientRpc(Vector3 newPos, Vector3 newVelocity, ClientRpcParams rpcParams = default)
+    {
+        if (IsOwner) return;
+
+        // Update pos for client 
+        transform.position = newPos;
+        rb.linearVelocity = newVelocity;
+    }
+
+
+    // Server RPC to request authoritative position
+    [ServerRpc]
+    private void RequestServerPositionServerRpc(ServerRpcParams rpcParams = default)
+    {
+        // Server sends its authoritative position/velocity to the requesting client
+        ReconcilePositionClientRpc(transform.position, rb.linearVelocity, 
+            new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new ulong[] { OwnerClientId }
+                }
+            });
+    }
+
+    // Client RPC specifically for owner reconciliation
+    [ClientRpc]
+    private void ReconcilePositionClientRpc(Vector3 serverPos, Vector3 serverVel, ClientRpcParams rpcParams = default)
+    {
+        // Only the owner should process this
+        if (!IsOwner) return;
+        
+        // Calculate the difference between predicted and actual position
+        Vector3 posDifference = serverPos - transform.position;
+        
+        // If difference is significant, apply correction smoothly
+        if (posDifference.magnitude > 0.5f)
+        {
+            // Smooth correction over time
+            StartCoroutine(SmoothCorrection(serverPos, serverVel));
+        }
     }
 }

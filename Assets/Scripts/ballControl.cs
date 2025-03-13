@@ -23,12 +23,12 @@ public class ballControl : NetworkBehaviour
         if (collision.gameObject.CompareTag("RedGoal"))
         {
             Debug.Log("Red goal hit - Blue scores!"); // Debug log
-            gameManager.Instance.Score(false);  // false means Player 2 (Blue) scored
+            GameManager.Instance.Score(false);  // false means Player 2 (Blue) scored
         }
         else if (collision.gameObject.CompareTag("BlueGoal"))
         {
             Debug.Log("Blue goal hit - Red scores!"); // Debug log
-            gameManager.Instance.Score(true);   // true means Player 1 (Red) scored
+            GameManager.Instance.Score(true);   // true means Player 1 (Red) scored
         }
     }
     

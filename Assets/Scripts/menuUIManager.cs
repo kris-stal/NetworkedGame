@@ -3,16 +3,15 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 using Unity.Services.Authentication;
-using Unity.Services.CloudSave;
 
-public class menuUIManager : MonoBehaviour
+public class MenuUIManager : MonoBehaviour
 {   
-    public static menuUIManager Instance { get; private set; } // Ensures that the menuManager can only be read by other scripts, but only this script can modify it.
+    public static MenuUIManager Instance { get; private set; } // Ensures that the menuManager can only be read by other scripts, but only this script can modify it.
     
     
     // Menu Manager script
-    [SerializeField] private menuManager menuManagerInstance;
-    [SerializeField] private playerProfileManager playerProfileManagerInstance;
+    [SerializeField] private MenuManager menuManagerInstance;
+    [SerializeField] private LobbyManager lobbyManagerInstance;
 
     // Reference UI Elements
     // Sign In Sceen
@@ -34,6 +33,7 @@ public class menuUIManager : MonoBehaviour
     [SerializeField] private GameObject lobbyUI;
     [SerializeField] private Button startGameButton;
     [SerializeField] private Button leaveLobbyButton;
+    [SerializeField] private Button startNetworkStressButton;
     [SerializeField] private TextMeshProUGUI lobbyNameText;
     [SerializeField] private TextMeshProUGUI lobbyCodeText;
     [SerializeField] private TextMeshProUGUI playerCountText;
@@ -53,7 +53,6 @@ public class menuUIManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-    
         ShowSigninScreen();
     }
 
@@ -66,12 +65,12 @@ public class menuUIManager : MonoBehaviour
         // Ensure Menu Manager exists
         if (menuManagerInstance == null)
         {
-            menuManagerInstance = menuManager.Instance;
+            menuManagerInstance = MenuManager.Instance;
 
             if (menuManagerInstance == null)
             {
                 Debug.LogError("menuManager instance not found! Attempting to find in scene.");
-                menuManagerInstance = FindFirstObjectByType<menuManager>();
+                menuManagerInstance = FindFirstObjectByType<MenuManager>();
                 
                 if (menuManagerInstance == null)
                 {
@@ -80,62 +79,32 @@ public class menuUIManager : MonoBehaviour
             }
         }
 
-        // Ensure player profile manager exists
-        if (playerProfileManagerInstance == null)
-        {
-            playerProfileManagerInstance = playerProfileManager.Instance;
 
-            if (playerProfileManagerInstance == null)
-            {
-                Debug.LogError("playerProfileManager instance not found! Attempting to find in scene.");
-                playerProfileManagerInstance = FindFirstObjectByType<playerProfileManager>();
-                
-                if (playerProfileManagerInstance == null)
-                {
-                    Debug.LogError("playerProfileManager not found in scene either!");
-                }
-            }
-        }
-
-        // Check if player is signed in
+        // Check if player is already signed in
         if (AuthenticationService.Instance.IsSignedIn)
         {
             Debug.Log($"Already signed in as {AuthenticationService.Instance.PlayerId}");
+
+            // 🔹 Retrieve stored player name
+            string savedName = await AuthenticationService.Instance.GetPlayerNameAsync();
+            if (!string.IsNullOrEmpty(savedName))
+            {
+                Debug.Log($"Restoring player name: {savedName}");
+                menuManagerInstance.SetPlayerName(savedName);
+            }
+            else
+            {
+                Debug.LogWarning("No player name found, using default name.");
+                menuManagerInstance.SetPlayerName("Player"); // Fallback name
+            }
+
             ShowMainMenuScreen();
-
-            // Retrieve player name from Cloud Save
-            try
-            {
-                // Check if CloudSaveService.Instance is initialized
-                if (CloudSaveService.Instance != null)
-                {
-                    string currentName = await playerProfileManagerInstance.GetPlayerName(); // Get the name from Cloud Save
-
-                    if (!string.IsNullOrEmpty(currentName))
-                    {
-                        playerNameInput.text = currentName; // Pre-fill the input field
-                    }
-                    else
-                    {
-                        Debug.LogWarning("Player name not found in Cloud Save.");
-                    }
-                }
-                else
-                {
-                    Debug.LogError("CloudSaveService.Instance is null. Make sure the service is initialized.");
-                }
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogWarning($"Failed to get player name from Cloud Save: {ex.Message}");
-            }
         }
         else
         {
             ShowSigninScreen();
         }
             
-
         // Set up button listeners
         signInButton.onClick.AddListener(OnSigninButtonClicked);
         
@@ -144,9 +113,7 @@ public class menuUIManager : MonoBehaviour
         
         startGameButton.onClick.AddListener(OnStartGameButtonClicked);
         leaveLobbyButton.onClick.AddListener(OnLeaveLobbyButtonClicked);
-        
-        // Start with the main menu panel active
-        ShowSigninScreen();
+        startNetworkStressButton.onClick.AddListener(OnNetworkStressButtonClicked);
     }
 
     // Update is called once per frame
@@ -170,9 +137,6 @@ public class menuUIManager : MonoBehaviour
         signinUI.SetActive(false);
         mainMenuUI.SetActive(true);
         lobbyUI.SetActive(false);
-        
-        // // Refresh lobbies when panel is shown
-        // _ = RefreshLobbyList();
     }
     
     public void ShowLobbyScreen()
@@ -187,10 +151,9 @@ public class menuUIManager : MonoBehaviour
     // Event handlers for main menu
     private async void OnSigninButtonClicked()
     {
-        // Check if Menu Manager exists
         if (menuManagerInstance == null)
         {
-            menuManagerInstance = menuManager.Instance;
+            menuManagerInstance = MenuManager.Instance;
             if (menuManagerInstance == null)
             {
                 Debug.LogError("Cannot sign in: menuManager not found!");
@@ -198,42 +161,42 @@ public class menuUIManager : MonoBehaviour
             }
         }
 
-        // Then get name
-        if (string.IsNullOrWhiteSpace(playerNameInput.text))
+        // Ensure player enters a name
+        string playerName = playerNameInput.text.Trim();
+        if (string.IsNullOrEmpty(playerName))
         {
-            Debug.LogWarning("Please enter a player name");
+            Debug.LogWarning("Please enter a player name.");
             return;
         }
 
-        // Set player name in menuManager
-        menuManagerInstance.SetPlayerName(playerNameInput.text);
-        
         try
         {
-            // Check if already signed in
+            // Authenticate if not already signed in
             if (!AuthenticationService.Instance.IsSignedIn)
             {
-                // Authenticate player only if not already signed in
                 await menuManagerInstance.AuthenticatePlayer();
             }
             else
             {
-                Debug.Log("Player was already authenticated");
+                Debug.Log("Player was already authenticated.");
             }
 
-            // Update player name on backend, even if already signed in
-            await AuthenticationService.Instance.UpdatePlayerNameAsync(playerNameInput.text);
-            Debug.Log($"Player name updated to {playerNameInput.text}");
+            // 🔹 Store the player's name in Unity's Authentication system
+            await AuthenticationService.Instance.UpdatePlayerNameAsync(playerName);
+            Debug.Log($"Player name updated to {playerName}");
 
-            // Show main menu after authentication confirmed
+            // Store locally
+            menuManagerInstance.SetPlayerName(playerName);
+
+            // Proceed to main menu
             ShowMainMenuScreen();
         }
         catch (System.Exception e)
         {
             Debug.LogError($"Authentication error: {e.Message}");
-            // Stay on sign-in screen if authentication fails
         }
     }
+
 
     // Event handlers for lobby selection
     private async void OnCreateLobbyButtonClicked()
@@ -285,7 +248,7 @@ public class menuUIManager : MonoBehaviour
             return;
         }
 
-        if (menuManagerInstance.IsHost)
+        if (lobbyManagerInstance.IsHost)
         {
             menuManagerInstance.StartGame();
         }
@@ -312,18 +275,40 @@ public class menuUIManager : MonoBehaviour
         }
     }
 
+        private void OnNetworkStressButtonClicked()
+    {
+        if (menuManagerInstance == null)
+        {
+            Debug.LogError("Cannot start stress test: menuManager not found!");
+            ShowMainMenuScreen();
+            return;
+        }
+
+        if (lobbyManagerInstance.IsHost)
+        {
+            menuManagerInstance.StartStressTest();
+        }
+        else
+        {
+            Debug.LogError("Only the host can stress test the network!");
+        }
+    }
+
     // Update lobby UI with current information
     private void UpdateLobbyUI()
     {
-        if (!lobbyUI.activeSelf || menuManagerInstance == null) return;
-        
+        if (!lobbyUI.activeSelf || menuManagerInstance == null || lobbyManagerInstance == null) return;
+
+        Debug.Log("Is Host: " + lobbyManagerInstance.IsHost);  // Debug to check if host status is correct
+
         // Update lobby info
-        lobbyNameText.text = "Lobby: " + menuManagerInstance.LobbyName;
-        lobbyCodeText.text = "Code: " + menuManagerInstance.LobbyCode;
-        playerCountText.text = "Players: " + menuManagerInstance.GetPlayerCount() + "/4";
+        lobbyNameText.text = "Lobby: " + lobbyManagerInstance.LobbyName;
+        lobbyCodeText.text = "Code: " + lobbyManagerInstance.LobbyCode;
+        playerCountText.text = "Players: " + lobbyManagerInstance.GetPlayerCount() + "/4";
         
         // Show start game button only for host
-        startGameButton.gameObject.SetActive(menuManagerInstance.IsHost);
+        startGameButton.gameObject.SetActive(lobbyManagerInstance.IsHost);
+        startNetworkStressButton.gameObject.SetActive(lobbyManagerInstance.IsHost);
         
         // Update player list
         UpdatePlayerList();
@@ -340,58 +325,13 @@ public class menuUIManager : MonoBehaviour
         }
         
         // Get player names
-        List<string> playerNames = menuManagerInstance.GetPlayerNames();
+        List<string> playerNames = lobbyManagerInstance.GetPlayerNames();
         
         // Populate player list
         foreach (string playerName in playerNames)
         {
             GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
             playerItem.GetComponentInChildren<TextMeshProUGUI>().text = playerName;
-        }
-    }
-
-    public void ShowReconnectionOption(string lobbyName)
-    {
-        if (reconnectionPanel != null)
-        {
-            reconnectionPanel.SetActive(true); // Show reconnection UI
-        }
-
-        if (reconnectionLobbyText != null)
-        {
-            reconnectionLobbyText.text = "Disconnected from: " + lobbyName + "\nWould you like to reconnect?";
-        }
-
-        Debug.Log("Reconnection option displayed for lobby: " + lobbyName);
-    }
-
-    public async void OnReconnectButtonClicked()
-    {
-        if (menuManager.Instance == null)
-        {
-            Debug.LogError("menuManager instance not found!");
-            return;
-        }
-
-        reconnectionButton.interactable = false; // Disable button to prevent spam clicking
-        bool success = await menuManager.Instance.ReconnectToGame();
-
-        if (success)
-        {
-            Debug.Log("Reconnected successfully!");
-            if (reconnectionPanel != null)
-            {
-                reconnectionPanel.SetActive(false); // Hide reconnection UI
-            }
-        }
-        else
-        {
-            Debug.LogError("Failed to reconnect!");
-            if (reconnectionErrorText != null)
-            {
-                reconnectionErrorText.text = "Failed to reconnect. The game may have ended.";
-            }
-            reconnectionButton.interactable = true; // Re-enable button if failed
         }
     }
 }

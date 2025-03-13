@@ -10,7 +10,7 @@ public class gameUIManager : NetworkBehaviour
     public static gameUIManager Instance { get; private set; }
 
     // Game Manager script
-    private gameManager gameManagerInstance;
+    private GameManager GameManagerInstance;
 
     // Variables
     // In Game UI
@@ -48,7 +48,7 @@ public class gameUIManager : NetworkBehaviour
     {
         Instance = this;
 
-        gameManagerInstance = gameManager.Instance;
+        GameManagerInstance = GameManager.Instance;
 
         networkMonitor.Visible = false; 
 
@@ -60,7 +60,7 @@ public class gameUIManager : NetworkBehaviour
 
         leaveGameButton.onClick.AddListener(() => { // On resume game button click
 
-            gameManager.Instance.LeaveGame();
+            GameManager.Instance.LeaveGame();
         });
     }
 
@@ -81,7 +81,7 @@ public class gameUIManager : NetworkBehaviour
     // Start is called once before the first execution of Update after the MonoBehaviour is created, after Awake
     private void Update()
     {
-        if (gameManager.Instance == null || NetworkManager.Singleton == null) return;
+        if (GameManager.Instance == null || NetworkManager.Singleton == null) return;
 
         // Get all player objects
         GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
@@ -89,8 +89,8 @@ public class gameUIManager : NetworkBehaviour
         // Update ping display for each player
         for (int i = 0; i < players.Length && i < pingTexts.Length; i++)
         {
-            ulong clientId = gameManager.Instance.GetPlayerClientId(players[i]);
-            float ping = gameManager.Instance.GetPlayerPing(clientId);
+            ulong clientId = GameManager.Instance.GetPlayerClientId(players[i]);
+            float ping = GameManager.Instance.GetPlayerPing(clientId);
             
             // Update the UI text
             pingTexts[i].text = $"Player {i+1} Ping: {ping:0}ms";
@@ -119,8 +119,8 @@ public class gameUIManager : NetworkBehaviour
         }
 
         // Handle Score UI
-        player1ScoreText.text = gameManager.Instance.GetPlayer1Score().ToString();
-        player2ScoreText.text = gameManager.Instance.GetPlayer2Score().ToString();
+        player1ScoreText.text = GameManager.Instance.GetPlayer1Score().ToString();
+        player2ScoreText.text = GameManager.Instance.GetPlayer2Score().ToString();
     }
 
     // Toggle display of the high ping warning message
@@ -168,9 +168,9 @@ public class gameUIManager : NetworkBehaviour
     // Button click handler for new game
     private void OnNewGameButtonClicked()
     {
-        if (gameManager.Instance != null)
+        if (GameManager.Instance != null)
         {
-            gameManager.Instance.StartNewGame();
+            GameManager.Instance.StartNewGame();
             ShowWinnerScreen(false);
         }
     }
@@ -196,7 +196,7 @@ public class gameUIManager : NetworkBehaviour
     //     }
         
     //     // Get player names
-    //     List<string> playerNames = gameManagerInstance.GetPlayerNames();
+    //     List<string> playerNames = GameManagerInstance.GetPlayerNames();
         
     //     // Populate player list
     //     foreach (string playerName in playerNames)

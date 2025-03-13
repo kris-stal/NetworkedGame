@@ -8,6 +8,9 @@ TagManager:
   - Wall
   - BlueGoal
   - RedGoal
+  - MenuUIManager
+  - LobbyManager
+  - NetworkManager
   layers:
   - Default
   - TransparentFX

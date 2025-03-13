@@ -1,8 +1,12 @@
 using System.IO;
+using System.Threading.Tasks;
 using UnityEngine;
 
 public class PlayerProfileManager : MonoBehaviour
 {
+
+    public static PlayerProfileManager Instance { get; private set; } // Ensures that this can only be read by other scripts, but only this script can modify it.
+    
     private const string PROFILE_SAVE_PATH = "playerProfile.json"; // Local save path
 
     [System.Serializable]
@@ -29,8 +33,9 @@ public class PlayerProfileManager : MonoBehaviour
         SavePlayerProfile();
     }
 
-    public string GetPlayerName()
+    public async Task<string> GetPlayerName()
     {
+        await Task.Yield();
         return currentProfile?.playerName ?? "Guest";
     }
 
@@ -55,5 +60,24 @@ public class PlayerProfileManager : MonoBehaviour
             SavePlayerProfile();
             Debug.Log("New player profile created.");
         }
+    }
+
+    public string GetAuthenticationId()
+    {
+        // Get the authentication ID from Unity's Authentication service
+        // This should be a persistent ID for the player
+        #if UNITY_EDITOR
+        // For testing in editor, you could use PlayerPrefs to simulate persistent IDs
+        string editorId = PlayerPrefs.GetString("EditorAuthId", "");
+        if (string.IsNullOrEmpty(editorId))
+        {
+            editorId = "editor_auth_" + System.Guid.NewGuid().ToString();
+            PlayerPrefs.SetString("EditorAuthId", editorId);
+        }
+        return editorId;
+        #else
+        // For actual builds, use Unity Authentication
+        return Unity.Services.Authentication.AuthenticationService.Instance.PlayerId;
+        #endif
     }
 }

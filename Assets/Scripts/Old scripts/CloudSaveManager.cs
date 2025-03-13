@@ -44,7 +44,7 @@ public class CloudSaveManager : MonoBehaviour
     }
 
     // Save game state to Unity Cloud
-    public async Task SaveGameState(gameManager.GameState gameState)
+    public async Task SaveGameState(GameManager.GameState gameState)
     {
         try
         {
@@ -69,7 +69,7 @@ public class CloudSaveManager : MonoBehaviour
     }
 
     // Load game state from Unity Cloud
-    public async Task<gameManager.GameState> LoadGameState()
+    public async Task<GameManager.GameState> LoadGameState()
     {
         try
         {
@@ -86,7 +86,7 @@ public class CloudSaveManager : MonoBehaviour
             string jsonData = savedData["gameState"].Value.GetAsString();
             
             // Deserialize the JSON to a GameState object
-            gameManager.GameState loadedState = JsonUtility.FromJson<gameManager.GameState>(jsonData);
+            GameManager.GameState loadedState = JsonUtility.FromJson<GameManager.GameState>(jsonData);
 
             Debug.Log("Game state loaded from Unity Cloud");
             return loadedState;
@@ -99,7 +99,7 @@ public class CloudSaveManager : MonoBehaviour
     }
 
     // Save individual player data
-    public async Task SavePlayerData(string playerAuthId, gameManager.PlayerState playerState)
+    public async Task SavePlayerData(string playerAuthId, GameManager.PlayerState playerState)
     {
         try
         {
@@ -123,7 +123,7 @@ public class CloudSaveManager : MonoBehaviour
     }
 
     // Load player data
-    public async Task<gameManager.PlayerState> LoadPlayerData(string playerAuthId)
+    public async Task<GameManager.PlayerState> LoadPlayerData(string playerAuthId)
     {
         try
         {
@@ -137,7 +137,7 @@ public class CloudSaveManager : MonoBehaviour
             }
 
             string jsonData = loadedData[key].Value.GetAsString();
-            gameManager.PlayerState playerState = JsonUtility.FromJson<gameManager.PlayerState>(jsonData);
+            GameManager.PlayerState playerState = JsonUtility.FromJson<GameManager.PlayerState>(jsonData);
 
             Debug.Log($"Player data loaded for {playerAuthId}");
             return playerState;
