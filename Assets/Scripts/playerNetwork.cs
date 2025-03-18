@@ -1,7 +1,6 @@
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
-using System.Linq;
 using System.Collections.Generic;
 
 // Main script for player objects
@@ -14,22 +13,23 @@ public class PlayerNetwork : NetworkBehaviour
     public Rigidbody rb; // player rigidbody
     public Vector3 InputKey; // input keys
     private bool movementEnabled = false; // control if movement is enabled
+    private Vector3 lastReceivedPosition;
+    private Vector3 targetPosition;
+    private float interpolationTime = 0f;
+
+    private bool isCorrectingPosition = false;
+
+    private Vector3 lastSentPosition;
+    private Vector3 lastSentVelocity;
+    private const float POSITION_THRESHOLD = 0.1f;
+    private const float VELOCITY_THRESHOLD = 0.1f;
 
     // Create a periodic reconciliation timer
     private float reconciliationTimer = 0f;
-    private const float RECONCILIATION_INTERVAL = 0.1f; // Reconcile every half second
+    private const float RECONCILIATION_INTERVAL = 0.2f; // Reconcile every half second
 
-    // Reconciliation threshold - only correct if error is greater than this
-    [SerializeField] private float positionErrorThreshold = 0.1f; // Lower than your current 0.5f
+    private float positionErrorThreshold = 2f;
     
-    
-
-    // awake is called when script is first made
-    private void Awake() 
-    {
-        if (!IsOwner) return; // if not owner of player object return
-        rb = GetComponent<Rigidbody>(); // get rigidbody of this player object
-    }
 
     // Test for syncing variable value, randomly generated integer:
     private NetworkVariable<int> randomNumber = new NetworkVariable<int>(1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
@@ -82,6 +82,14 @@ public class PlayerNetwork : NetworkBehaviour
     }
 
 
+
+    // Awake is called when script is first made
+    private void Awake() 
+    {
+        if (!IsOwner) return; // if not owner of player object return
+        rb = GetComponent<Rigidbody>(); // get rigidbody of this player object
+    }
+
     // Update is called once per frame
     private void Update()
     {
@@ -127,6 +135,12 @@ public class PlayerNetwork : NetworkBehaviour
                 reconciliationTimer = 0f;
                 RequestServerPositionServerRpc();
             }
+        }
+
+        if (!IsOwner)
+        {
+            interpolationTime += Time.deltaTime * 20f; // Adjust speed factor as needed
+            transform.position = Vector3.Lerp(lastReceivedPosition, targetPosition, interpolationTime);
         }
     }
 
@@ -265,12 +279,17 @@ public class PlayerNetwork : NetworkBehaviour
             transform.position = Vector3.Lerp(startPos, targetPos, t);
             rb.linearVelocity = Vector3.Lerp(startVel, targetVel, t);
             
+
             yield return null;
         }
         
         // Ensure we end exactly at target values
         transform.position = targetPos;
         rb.linearVelocity = targetVel;
+
+            // Set flag when done
+        isCorrectingPosition = false;
+        yield break;
     }
 
 
@@ -299,6 +318,14 @@ public class PlayerNetwork : NetworkBehaviour
         if (rb.linearVelocity.magnitude > maxSpeed) 
         {
             rb.linearVelocity = rb.linearVelocity.normalized * maxSpeed;
+        }
+
+        // Only send updates if position or velocity changed significantly
+        if (Vector3.Distance(transform.position, lastSentPosition) > POSITION_THRESHOLD ||
+            Vector3.Distance(rb.linearVelocity, lastSentVelocity) > VELOCITY_THRESHOLD)
+        {
+            lastSentPosition = transform.position;
+            lastSentVelocity = rb.linearVelocity;
         }
         
         // Create a list to store client IDs except the owner
@@ -411,7 +438,15 @@ public class PlayerNetwork : NetworkBehaviour
         if (IsOwner) return;
 
         // Update pos for client 
-        transform.position = newPos;
+        // transform.position = newPos;
+        // rb.linearVelocity = newVelocity;
+
+        // Save start and target positions for interpolation
+        lastReceivedPosition = transform.position;
+        targetPosition = newPos;
+        interpolationTime = 0f;
+        
+        // Still update velocity immediately
         rb.linearVelocity = newVelocity;
     }
 
@@ -441,10 +476,18 @@ public class PlayerNetwork : NetworkBehaviour
         // Calculate the difference between predicted and actual position
         Vector3 posDifference = serverPos - transform.position;
         
-        // If difference is significant, apply correction smoothly
-        if (posDifference.magnitude > 0.5f)
+        // // If difference is significant, apply correction smoothly
+        // if (posDifference.magnitude > 0.5f)
+        // {
+        //     // Smooth correction over time
+        //     StartCoroutine(SmoothCorrection(serverPos, serverVel));
+        // }
+
+            // Only correct if the error exceeds the threshold AND
+        // we're not in the middle of applying a previous correction
+        if (posDifference.magnitude > positionErrorThreshold && !isCorrectingPosition)
         {
-            // Smooth correction over time
+            isCorrectingPosition = true;
             StartCoroutine(SmoothCorrection(serverPos, serverVel));
         }
     }

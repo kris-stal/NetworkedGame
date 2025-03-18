@@ -3,6 +3,9 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 using Unity.Services.Authentication;
+using Unity.VisualScripting;
+using Unity.Services.Lobbies.Models;
+using System.Threading.Tasks;
 
 public class MenuUIManager : MonoBehaviour
 {   
@@ -24,6 +27,13 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private TMPro.TMP_InputField codeInputBox;
     [SerializeField] private Button createLobbyButton;
     [SerializeField] private Button joinLobbyWithCodeButton;
+    [SerializeField] private Button searchLobbiesButton;
+    [SerializeField] private GameObject lobbyListPanel;
+    [SerializeField] private GameObject lobbyListItem;
+    [SerializeField] private Transform lobbyListContent;
+    private List<GameObject> instantiatedLobbyItems = new List<GameObject>();
+
+
     [SerializeField] private GameObject reconnectionPanel;
     [SerializeField] private TextMeshProUGUI reconnectionLobbyText;
     [SerializeField] private TextMeshProUGUI reconnectionErrorText;
@@ -79,6 +89,23 @@ public class MenuUIManager : MonoBehaviour
             }
         }
 
+        // Ensure Lobby Manager exists
+        if (lobbyManagerInstance== null)
+        {
+            lobbyManagerInstance = LobbyManager.Instance;
+
+            if (lobbyManagerInstance == null)
+            {
+                Debug.LogError("lobbyManagerInstance not found! Attempting to find in scene.");
+                lobbyManagerInstance = FindFirstObjectByType<LobbyManager>();
+                
+                if (lobbyManagerInstance == null)
+                {
+                    Debug.LogError("lobbyManagerInstance not found in scene either!");
+                }
+            }
+        }
+
 
         // Check if player is already signed in
         if (AuthenticationService.Instance.IsSignedIn)
@@ -104,18 +131,112 @@ public class MenuUIManager : MonoBehaviour
         {
             ShowSigninScreen();
         }
-            
+        
+        lobbyListPanel.SetActive(false);
+
         // Set up button listeners
         signInButton.onClick.AddListener(OnSigninButtonClicked);
         
         createLobbyButton.onClick.AddListener(OnCreateLobbyButtonClicked);
         joinLobbyWithCodeButton.onClick.AddListener(OnJoinByCodeButtonClicked);
-        
+        searchLobbiesButton.onClick.AddListener(async () => await SearchAndDisplayLobbies());
+
         startGameButton.onClick.AddListener(OnStartGameButtonClicked);
         leaveLobbyButton.onClick.AddListener(OnLeaveLobbyButtonClicked);
         startNetworkStressButton.onClick.AddListener(OnNetworkStressButtonClicked);
     }
 
+    public async Task SearchAndDisplayLobbies()
+    {
+        // Show loading indicator or disable button while searching
+        searchLobbiesButton.interactable = false;
+        
+        // Clear previous lobby items
+        ClearLobbyList();
+        
+        // Search for lobbies
+        List<Lobby> lobbies = await lobbyManagerInstance.SearchLobbies();
+        
+        // Display lobbies
+        DisplayLobbies(lobbies);
+        
+        // Re-enable search button
+        searchLobbiesButton.interactable = true;
+        
+        // Show the lobby panel
+        lobbyListPanel.SetActive(true);
+    }
+    
+    private void DisplayLobbies(List<Lobby> lobbies)
+    {
+        if (lobbies.Count == 0)
+        {
+            // You might want to display a "No lobbies found" message
+            Debug.Log("No lobbies found");
+            return;
+        }
+        
+        foreach (Lobby lobby in lobbies)
+        {
+            // Instantiate a lobby list item
+            GameObject lobbyItem = Instantiate(lobbyListItem, lobbyListContent);
+            
+            // Set up the lobby item data
+            LobbyListItem item = lobbyItem.GetComponent<LobbyListItem>();
+            if (item != null)
+            {
+                item.Initialize(lobby);
+                
+                // Add join button functionality
+                item.JoinButton.onClick.AddListener(() => OnJoinLobbyClicked(lobby.Id));
+            }
+            
+            // Add to our list for cleanup later
+            instantiatedLobbyItems.Add(lobbyItem);
+        }
+    }
+    
+    private void ClearLobbyList()
+    {
+        foreach (GameObject item in instantiatedLobbyItems)
+        {
+            Destroy(item);
+        }
+        instantiatedLobbyItems.Clear();
+    }
+    
+    private async void OnJoinLobbyClicked(string lobbyId)
+    {
+        // Disable join buttons while joining
+        SetJoinButtonsInteractable(false);
+        
+        // Call join lobby method from your lobby manager
+        bool success = await lobbyManagerInstance.JoinLobbyById(lobbyId);
+        
+        if (!success)
+        {
+            // Re-enable buttons if join failed
+            SetJoinButtonsInteractable(true);
+            Debug.LogError("Failed to join lobby");
+            SetJoinButtonsInteractable(true);
+            return;
+        }
+
+        lobbyListPanel.SetActive(false);
+        ShowLobbyScreen();
+    }
+    
+    private void SetJoinButtonsInteractable(bool interactable)
+    {
+        foreach (GameObject item in instantiatedLobbyItems)
+        {
+            LobbyListItem listItem = item.GetComponent<LobbyListItem>();
+            if (listItem != null)
+            {
+                listItem.JoinButton.interactable = interactable;
+            }
+        }
+    }
     // Update is called once per frame
     void Update()
     {
@@ -211,6 +332,7 @@ public class MenuUIManager : MonoBehaviour
         
         if (created)
         {
+            lobbyListPanel.SetActive(false);
             ShowLobbyScreen();
         }
     }
@@ -235,8 +357,14 @@ public class MenuUIManager : MonoBehaviour
         
         if (joined)
         {
+            lobbyListPanel.SetActive(false);
             ShowLobbyScreen();
         }
+    }
+
+    private void OnSearchLobbiesButtonClicked()
+    {
+        lobbyListPanel.SetActive(true);
     }
 
     // Event handlers for lobby

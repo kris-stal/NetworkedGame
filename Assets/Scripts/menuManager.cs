@@ -180,6 +180,23 @@ public class MenuManager : MonoBehaviour
         }
     }
 
+        public async void Authenticate(string playerName) {
+        this.playerName = playerName;
+        InitializationOptions initializationOptions = new InitializationOptions();
+        initializationOptions.SetProfile(playerName);
+
+        await UnityServices.InitializeAsync(initializationOptions);
+
+        AuthenticationService.Instance.SignedIn += () => {
+            // do nothing
+            Debug.Log("Signed in! " + AuthenticationService.Instance.PlayerId);
+
+            LobbyManager.Instance.RefreshLobbyList();
+        };
+
+        await AuthenticationService.Instance.SignInAnonymouslyAsync();
+    }
+
     // Create a lobby and start as host
     public async Task<bool> CreateLobby()
     {

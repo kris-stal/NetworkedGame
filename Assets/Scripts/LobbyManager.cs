@@ -4,6 +4,7 @@ using Unity.Services.Lobbies.Models;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System;
 
 public class LobbyManager : MonoBehaviour
 {
@@ -15,9 +16,11 @@ public class LobbyManager : MonoBehaviour
     private float heartbeatTimer;
     private float lobbyUpdateTimer;
     private string playerName;
+    private Lobby currentLobby;
+
 
     // Constants
-    private float lobbyUpdateTimerMax = 2f;
+    private const float lobbyUpdateTimerMax = 2f;
     
     // Public properties
     public Lobby HostLobby => hostLobby;
@@ -25,6 +28,22 @@ public class LobbyManager : MonoBehaviour
     public string LobbyName => (hostLobby != null) ? hostLobby.Name : (joinedLobby != null) ? joinedLobby.Name : "";
     public string LobbyCode => (hostLobby != null) ? hostLobby.LobbyCode : (joinedLobby != null) ? joinedLobby.LobbyCode : "";
     public bool IsHost => hostLobby != null;
+
+
+    public event EventHandler OnLeftLobby;
+
+    public event EventHandler<LobbyEventArgs> OnJoinedLobby;
+    public event EventHandler<LobbyEventArgs> OnJoinedLobbyUpdate;
+    public event EventHandler<LobbyEventArgs> OnKickedFromLobby;
+    public class LobbyEventArgs : EventArgs {
+        public Lobby lobby;
+    }
+
+    public event EventHandler<OnLobbyListChangedEventArgs> OnLobbyListChanged;
+    public class OnLobbyListChangedEventArgs : EventArgs {
+        public List<Lobby> lobbyList;
+    }
+
 
     private void Awake()
     {
@@ -84,10 +103,35 @@ public class LobbyManager : MonoBehaviour
             {
                 lobbyUpdateTimer = lobbyUpdateTimerMax;
 
-                Lobby lobby = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id);
-                joinedLobby = lobby;
+                joinedLobby = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id);
+
+                OnJoinedLobbyUpdate?.Invoke(this, new LobbyEventArgs { lobby = joinedLobby });
+
+                if (!IsPlayerInLobby()) {
+                    // Player was kicked out of this lobby
+                    Debug.Log("Kicked from Lobby!");
+
+                    OnKickedFromLobby?.Invoke(this, new LobbyEventArgs { lobby = joinedLobby });
+
+                    joinedLobby = null;
+                }
             }
         }
+    }
+    
+
+
+    // Check if player in lobby (true)
+    private bool IsPlayerInLobby() {
+        if (joinedLobby != null && joinedLobby.Players != null) {
+            foreach (Player player in joinedLobby.Players) {
+                if (player.Id == AuthenticationService.Instance.PlayerId) {
+                    // This player is in this lobby
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // Creating the lobby
@@ -126,6 +170,108 @@ public class LobbyManager : MonoBehaviour
             return false;
         }
     }
+
+    // Add this method to your LobbyManager class
+    public async Task<List<Lobby>> SearchLobbies()
+    {
+        try
+        {
+            // Set up query options
+            QueryLobbiesOptions queryOptions = new QueryLobbiesOptions
+            {
+                Count = 25, // Maximum number of results to return
+                Filters = new List<QueryFilter>
+                {
+                    // Only show lobbies that aren't full
+                    new QueryFilter(
+                        field: QueryFilter.FieldOptions.AvailableSlots,
+                        op: QueryFilter.OpOptions.GT,
+                        value: "0")
+                },
+                Order = new List<QueryOrder>
+                {
+                    // Sort by creation time (newest first)
+                    new QueryOrder(
+                        asc: false,
+                        field: QueryOrder.FieldOptions.Created)
+                }
+            };
+
+            // Execute the query
+            QueryResponse queryResponse = await LobbyService.Instance.QueryLobbiesAsync(queryOptions);
+            
+            Debug.Log($"Found {queryResponse.Results.Count} lobbies");
+            
+            return queryResponse.Results;
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"Failed to search lobbies: {e.Message}");
+            return new List<Lobby>();
+        }
+    }
+
+    public async void RefreshLobbyList() {
+        try {
+            QueryLobbiesOptions options = new QueryLobbiesOptions();
+            options.Count = 25;
+
+            // Filter for open lobbies only
+            options.Filters = new List<QueryFilter> {
+                new QueryFilter(
+                    field: QueryFilter.FieldOptions.AvailableSlots,
+                    op: QueryFilter.OpOptions.GT,
+                    value: "0")
+            };
+
+            // Order by newest lobbies first
+            options.Order = new List<QueryOrder> {
+                new QueryOrder(
+                    asc: false,
+                    field: QueryOrder.FieldOptions.Created)
+            };
+
+            QueryResponse lobbyListQueryResponse = await LobbyService.Instance.QueryLobbiesAsync();
+
+            OnLobbyListChanged?.Invoke(this, new OnLobbyListChangedEventArgs { lobbyList = lobbyListQueryResponse.Results });
+        } catch (LobbyServiceException e) {
+            Debug.Log(e);
+        }
+    }
+
+        // Method to join a lobby by ID
+    public async Task<bool> JoinLobbyById(string lobbyId)
+    {
+        try
+        {
+            // Make sure player is authenticated
+            if (!AuthenticationService.Instance.IsSignedIn)
+            {
+                Debug.LogError("Player is not signed in");
+                return false;
+            }
+            
+            // Join the lobby
+            JoinLobbyByIdOptions options = new JoinLobbyByIdOptions
+            {
+                Player = GetPlayer()
+            };
+            
+            currentLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, options);
+            Debug.Log($"Joined lobby: {currentLobby.Name}");
+            
+            // Here you would typically start heartbeats and handle lobby events
+            
+            return true;
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"Failed to join lobby: {e.Message}");
+            return false;
+        }
+    }
+
+
 
     // Joining lobby via code input
     public async Task<bool> JoinLobbyByCode(string lobbyCode)

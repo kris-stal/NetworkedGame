@@ -39,8 +39,6 @@ public class gameUIManager : NetworkBehaviour
     [SerializeField] private Button resumeGameButton;
     [SerializeField] private Button leaveGameButton;
 
-    // Other Variables
-    private bool isTabKeyDown;
 
 
     // Awake is called when the script instance is loaded, before Start
@@ -174,35 +172,5 @@ public class gameUIManager : NetworkBehaviour
             ShowWinnerScreen(false);
         }
     }
-
-    public void ShowWaitingForReconnection(bool show)
-    {
-        // Implement UI for showing a waiting message
-        // e.g., waitingPanel.SetActive(show);
-    }
-
-    public void UpdateReconnectionTimerText(string timerText)
-    {
-        // Update UI with timer text
-        // e.g., reconnectionTimerText.text = "Waiting for player: " + timerText;
-    }
-
-    // private void UpdatePlayerList()
-    // {
-    //     // Clear current player list
-    //     foreach (Transform child in playerListContent)
-    //     {
-    //         Destroy(child.gameObject);
-    //     }
-        
-    //     // Get player names
-    //     List<string> playerNames = GameManagerInstance.GetPlayerNames();
-        
-    //     // Populate player list
-    //     foreach (string playerName in playerNames)
-    //     {
-    //         GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
-    //         playerItem.GetComponentInChildren<TextMeshProUGUI>().text = playerName;
-    //     }
-    // }
+    
 }
