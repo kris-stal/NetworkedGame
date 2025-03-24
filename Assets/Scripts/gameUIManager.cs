@@ -4,10 +4,10 @@ using TMPro;
 using UnityEngine.UI;
 using System;
 using Unity.Multiplayer.Tools.NetStatsMonitor;
-public class gameUIManager : NetworkBehaviour
+public class GameUIManager : NetworkBehaviour
 {   
     // Singleton Pattern
-    public static gameUIManager Instance { get; private set; }
+    public static GameUIManager Instance { get; private set; }
 
     // Game Manager script
     private GameManager GameManagerInstance;
@@ -125,6 +125,22 @@ public class gameUIManager : NetworkBehaviour
     public void toggleHighPingWarning(Boolean boolean)
     {
         highPingWarningText.gameObject.SetActive(boolean);
+    }
+
+    public void changeResolution(float ping)
+    {
+        if (ping > 50)
+        {
+            Screen.SetResolution(1280, 720, true); // Medium
+        }
+        else if (ping > 100)
+        {
+            Screen.SetResolution(640, 360, true); // Low
+        }
+        else 
+        {
+            Screen.SetResolution(1920, 1080, true); // High
+        }
     }
 
         // Methods for countdown display

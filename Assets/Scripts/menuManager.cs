@@ -7,17 +7,20 @@ using System.Threading.Tasks;
 
 public class MenuManager : MonoBehaviour
 {
+    // Singleton pattern
     public static MenuManager Instance { get; private set; }
 
-    // Reference other scripts
-    [SerializeField] private NetworkManager networkManagerPrefab;
-    [SerializeField] private MenuUIManager menuUIManagerInstance;
-    [SerializeField] private LobbyManager lobbyManagerInstance;
+    // Reference other scripts via CoreManager
+    private CoreManager coreManager;
+    private MenuUIManager menuUIManagerInstance;
+    private LobbyManager lobbyManagerInstance;
+    private GameManager gameManagerInstance;
 
     // Private Variables only this script accesses
     private string playerName;
-    private bool isNetworkInitialized = false;
+    
 
+    // Awake is called first
     private void Awake()
     {
         // Set Singleton Pattern
@@ -30,47 +33,17 @@ public class MenuManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
+
+        // Assign manager instances
+        coreManager = CoreManager.Instance;
+        menuUIManagerInstance = coreManager.menuUIManagerInstance;
+        lobbyManagerInstance = coreManager.lobbyManagerInstance;
+        gameManagerInstance = coreManager.gameManagerInstance;
     }
 
     // Start is called before first frame update, after Awake
     private async void Start()
     {
-        // Ensure references are set correctly
-        // Ensure Lobby Manager exists
-        if (lobbyManagerInstance == null)
-        {
-            lobbyManagerInstance = LobbyManager.Instance;
-
-            if (lobbyManagerInstance == null)
-            {
-                Debug.LogError("lobbyManagerInstance instance not found! Attempting to find in scene.");
-                lobbyManagerInstance = FindFirstObjectByType<LobbyManager>();
-                
-                if (lobbyManagerInstance == null)
-                {
-                    Debug.LogError("lobbyManagerInstance not found in scene either!");
-                }
-            }
-        }
-
-        if (lobbyManagerInstance == null)
-        {
-        // Ensure Menu UI Manager exists
-        menuUIManagerInstance = MenuUIManager.Instance;
-
-            if (menuUIManagerInstance == null)
-            {
-                Debug.LogError("menuUIManagerInstance instance not found! Attempting to find in scene.");
-                menuUIManagerInstance = FindFirstObjectByType<MenuUIManager>();
-                
-                if (menuUIManagerInstance == null)
-                {
-                    Debug.LogError("menuUIManagerInstance not found in scene either!");
-                }
-            }
-        }
-    
-        
         // Firstly checking if Unity Services is active,
         // if player was already signed in, 
         // and if player was in game already.
@@ -93,57 +66,12 @@ public class MenuManager : MonoBehaviour
             return;
         }
 
-        // Find the UI manager if not assigned through Inspector
-        if (menuUIManagerInstance == null)
-        {
-            menuUIManagerInstance = MenuUIManager.Instance;
-            
-            if (menuUIManagerInstance == null)
-            {
-                Debug.LogError("menuUIManager instance not found! Attempting to find in scene.");
-                menuUIManagerInstance = FindFirstObjectByType<MenuUIManager>();
-                
-                if (menuUIManagerInstance == null)
-                {
-                    Debug.LogError("menuUIManager not found in scene either!");
-                    return;
-                }
-            }
-        }
-
         // Always show sign-in screen first
         menuUIManagerInstance.ShowSigninScreen();
         
         Debug.Log("Showing sign-in screen. User must sign in manually.");
     }
 
-    // Initialize NetworkManager Method
-    private void InitializeNetworkManager()
-    {
-        if (isNetworkInitialized) return;
-        
-        if (NetworkManager.Singleton == null)
-        {
-            if (networkManagerPrefab != null)
-            {
-                NetworkManager networkManagerInstance = Instantiate(networkManagerPrefab);
-                DontDestroyOnLoad(networkManagerInstance.gameObject);
-                Debug.Log("NetworkManager instantiated");
-            }
-            else
-            {
-                Debug.LogError("NetworkManager prefab not assigned in inspector!");
-                return;
-            }
-        }
-        else
-        {
-            DontDestroyOnLoad(NetworkManager.Singleton.gameObject);
-        }
-        
-        isNetworkInitialized = true;
-        Debug.Log("NetworkManager initialized");
-    }
 
     // Setter for player name
     public void SetPlayerName(string name)
@@ -152,26 +80,26 @@ public class MenuManager : MonoBehaviour
         lobbyManagerInstance.SetPlayerName(name);
     }
 
-    public async Task AuthenticatePlayer() 
+    public async Task Authenticate(string playerName)
     {
-        try 
+        try
         {
-            // Initialize Unity services if not already done
             if (UnityServices.State != ServicesInitializationState.Initialized)
             {
-                Debug.LogWarning("Unity Services are not initialized yet, intializing.");
-                await UnityServices.InitializeAsync();
+                Debug.Log("Initializing Unity Services...");
+                InitializationOptions options = new InitializationOptions();
+                options.SetProfile(playerName);
+                await UnityServices.InitializeAsync(options);
             }
-            
-            // Register event callback
-            AuthenticationService.Instance.SignedIn += () => 
+
+            AuthenticationService.Instance.SignedIn += async () =>
             {
-                Debug.Log("Signed in: " + AuthenticationService.Instance.PlayerId);
+                Debug.Log($"Signed in as {AuthenticationService.Instance.PlayerId}");
+                await LobbyManager.Instance.SearchAndRefreshLobbies(); // Refresh lobbies after sign-in
             };
 
-            // Sign in anonymously
             await AuthenticationService.Instance.SignInAnonymouslyAsync();
-            Debug.Log("Authentication complete for player: " + playerName);
+            Debug.Log($"Authentication complete for player: {playerName}");
         }
         catch (System.Exception e)
         {
@@ -180,32 +108,12 @@ public class MenuManager : MonoBehaviour
         }
     }
 
-        public async void Authenticate(string playerName) {
-        this.playerName = playerName;
-        InitializationOptions initializationOptions = new InitializationOptions();
-        initializationOptions.SetProfile(playerName);
-
-        await UnityServices.InitializeAsync(initializationOptions);
-
-        AuthenticationService.Instance.SignedIn += () => {
-            // do nothing
-            Debug.Log("Signed in! " + AuthenticationService.Instance.PlayerId);
-
-            LobbyManager.Instance.RefreshLobbyList();
-        };
-
-        await AuthenticationService.Instance.SignInAnonymouslyAsync();
-    }
-
     // Create a lobby and start as host
     public async Task<bool> CreateLobby()
     {
         bool lobbyCreated = await lobbyManagerInstance.CreateLobby();
         if (lobbyCreated)
         {
-            // Initialize the Network Manager
-            InitializeNetworkManager();
-
             // Start hosting
             if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
             {
@@ -230,9 +138,6 @@ public class MenuManager : MonoBehaviour
         bool lobbyJoined = await lobbyManagerInstance.JoinLobbyByCode(lobbyCode);
         if (lobbyJoined)
         {
-            // Initialize the Network Manager
-            InitializeNetworkManager();
-
             // Start as client
             if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
             {
@@ -282,6 +187,7 @@ public class MenuManager : MonoBehaviour
             {
                 // Load the game scene
                 NetworkManager.Singleton.SceneManager.LoadScene("BallArena", LoadSceneMode.Single);
+                gameManagerInstance.onLoadArena();
                 Debug.Log("Loading scene: BallArena");
             }
             else

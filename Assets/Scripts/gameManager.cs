@@ -134,35 +134,6 @@ public class GameManager : NetworkBehaviour
         // Subscribe to client dis/connect event
         NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnect;
         NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnect;
-
-        // Find the ball Game Object
-        theBall = GameObject.FindGameObjectWithTag("Ball");
-        
-        // Spawn Positions
-        playerSpawnPos.Add(new Vector3(-5, 1, 0)); // spawn pos 1
-        playerSpawnPos.Add(new Vector3(5, 1, 0)); // spawn pos 2
-        Debug.Log(playerSpawnPos.Count); // Output num of spawn pos for testing
-
-        winnerScreenShown = false;
-        
-        // Find all players
-        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
-        Debug.Log($"Found {players.Length} players");
-
-        // Add all players to list of Player Objects
-        foreach (GameObject player in players)
-        {
-            playerObjects.Add(player);
-            Debug.Log($"Added player with NetworkObjectId: {player.GetComponent<NetworkObject>().NetworkObjectId}");
-        }
-
-        // Start initial countdown when server
-        if (IsServer)
-        {
-            StartInitialCountdown();
-        }
-
-        gameInProgress.OnValueChanged += OnGameInProgressChanged;
     }
 
 
@@ -181,6 +152,8 @@ public class GameManager : NetworkBehaviour
         if (IsClient && !IsServer)
         {
             float myPing = GetPlayerPing(NetworkManager.Singleton.LocalClientId); // Get player's ping
+
+            gameUIManagerInstance.changeResolution(myPing);
             if (myPing > 100f) // 100ms threshold for unstable connection
             {
                 // Display unstable connection message
@@ -239,6 +212,40 @@ public class GameManager : NetworkBehaviour
         {
             FreezeBallAndPlayers();
         }
+    }
+
+
+    // Find ball, players and start initial countdown
+    public void onLoadArena()
+    {
+        // Find the ball Game Object
+        theBall = GameObject.FindGameObjectWithTag("Ball");
+
+        // Find all players
+        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        Debug.Log($"Found {players.Length} players");
+
+        // Add all players to list of Player Objects
+        foreach (GameObject player in players)
+        {
+            playerObjects.Add(player);
+            Debug.Log($"Added player with NetworkObjectId: {player.GetComponent<NetworkObject>().NetworkObjectId}");
+        }
+
+        // Start initial countdown when server
+        if (IsServer)
+        {
+            StartInitialCountdown();
+        }
+
+        gameInProgress.OnValueChanged += OnGameInProgressChanged;
+
+        // Spawn Positions
+        playerSpawnPos.Add(new Vector3(-5, 1, 0)); // spawn pos 1
+        playerSpawnPos.Add(new Vector3(5, 1, 0)); // spawn pos 2
+        Debug.Log(playerSpawnPos.Count); // Output num of spawn pos for testing
+
+        winnerScreenShown = false;
     }
 
     // Start initial countdown

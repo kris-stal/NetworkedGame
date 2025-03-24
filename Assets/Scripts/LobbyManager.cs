@@ -29,14 +29,18 @@ public class LobbyManager : MonoBehaviour
     public string LobbyCode => (hostLobby != null) ? hostLobby.LobbyCode : (joinedLobby != null) ? joinedLobby.LobbyCode : "";
     public bool IsHost => hostLobby != null;
 
+    public Dictionary<string, float> playerPings = new Dictionary<string, float>();
+    public Dictionary<string, ulong> playerClientIds = new Dictionary<string, ulong>(); 
+
 
     public event EventHandler OnLeftLobby;
-
     public event EventHandler<LobbyEventArgs> OnJoinedLobby;
     public event EventHandler<LobbyEventArgs> OnJoinedLobbyUpdate;
     public event EventHandler<LobbyEventArgs> OnKickedFromLobby;
     public class LobbyEventArgs : EventArgs {
         public Lobby lobby;
+        public string PlayerId {get; set;}
+        public string PlayerName {get; set;}
     }
 
     public event EventHandler<OnLobbyListChangedEventArgs> OnLobbyListChanged;
@@ -51,7 +55,7 @@ public class LobbyManager : MonoBehaviour
         if (Instance == null)
         {
             Instance = this;
-            DontDestroyOnLoad(gameObject);
+            DontDestroyOnLoad(gameObject); // Keep LobbyManager between scenes
         }
         else
         {
@@ -64,8 +68,15 @@ public class LobbyManager : MonoBehaviour
         lobbyUpdateTimer = 3f;
     }
 
+    private void Start()
+    {
+        // Subscribe to events
+        OnJoinedLobby += HandleJoinedLobby;
+    }
+
     private void Update()
     {
+        // Handle lobby heartbeat and updates
         HandleLobbyHeartbeat();
         HandleLobbyPollForUpdates();
     }
@@ -119,8 +130,6 @@ public class LobbyManager : MonoBehaviour
         }
     }
     
-
-
     // Check if player in lobby (true)
     private bool IsPlayerInLobby() {
         if (joinedLobby != null && joinedLobby.Players != null) {
@@ -171,37 +180,34 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
-    // Add this method to your LobbyManager class
-    public async Task<List<Lobby>> SearchLobbies()
+    public async Task<List<Lobby>> SearchAndRefreshLobbies()
     {
         try
         {
-            // Set up query options
             QueryLobbiesOptions queryOptions = new QueryLobbiesOptions
             {
-                Count = 25, // Maximum number of results to return
+                Count = 25, // Max results
                 Filters = new List<QueryFilter>
                 {
-                    // Only show lobbies that aren't full
                     new QueryFilter(
                         field: QueryFilter.FieldOptions.AvailableSlots,
                         op: QueryFilter.OpOptions.GT,
-                        value: "0")
+                        value: "0") // Only open lobbies
                 },
                 Order = new List<QueryOrder>
                 {
-                    // Sort by creation time (newest first)
                     new QueryOrder(
                         asc: false,
-                        field: QueryOrder.FieldOptions.Created)
+                        field: QueryOrder.FieldOptions.Created) // Newest first
                 }
             };
 
-            // Execute the query
             QueryResponse queryResponse = await LobbyService.Instance.QueryLobbiesAsync(queryOptions);
-            
             Debug.Log($"Found {queryResponse.Results.Count} lobbies");
-            
+
+            // Notify UI or other listeners
+            OnLobbyListChanged?.Invoke(this, new OnLobbyListChangedEventArgs { lobbyList = queryResponse.Results });
+
             return queryResponse.Results;
         }
         catch (LobbyServiceException e)
@@ -211,35 +217,7 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
-    public async void RefreshLobbyList() {
-        try {
-            QueryLobbiesOptions options = new QueryLobbiesOptions();
-            options.Count = 25;
-
-            // Filter for open lobbies only
-            options.Filters = new List<QueryFilter> {
-                new QueryFilter(
-                    field: QueryFilter.FieldOptions.AvailableSlots,
-                    op: QueryFilter.OpOptions.GT,
-                    value: "0")
-            };
-
-            // Order by newest lobbies first
-            options.Order = new List<QueryOrder> {
-                new QueryOrder(
-                    asc: false,
-                    field: QueryOrder.FieldOptions.Created)
-            };
-
-            QueryResponse lobbyListQueryResponse = await LobbyService.Instance.QueryLobbiesAsync();
-
-            OnLobbyListChanged?.Invoke(this, new OnLobbyListChangedEventArgs { lobbyList = lobbyListQueryResponse.Results });
-        } catch (LobbyServiceException e) {
-            Debug.Log(e);
-        }
-    }
-
-        // Method to join a lobby by ID
+    // Method to join a lobby by ID (from searching lobbies)
     public async Task<bool> JoinLobbyById(string lobbyId)
     {
         try
@@ -271,8 +249,6 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
-
-
     // Joining lobby via code input
     public async Task<bool> JoinLobbyByCode(string lobbyCode)
     {
@@ -303,6 +279,13 @@ public class LobbyManager : MonoBehaviour
             Debug.Log(e);
             return false;
         }
+    }
+
+    private void HandleJoinedLobby(object sender, LobbyEventArgs e)
+    {
+        Debug.Log($"Player joined lobby: {e.PlayerName}");
+
+        RegisterPlayer(e.PlayerId);
     }
 
     // Get player data
@@ -425,5 +408,49 @@ public class LobbyManager : MonoBehaviour
         }
         
         return 0;
+    }
+    // Update ping for a player
+    public void UpdatePlayerPing(string playerId, float ping)
+    {
+        playerPings[playerId] = ping;
+    }
+
+    // Get ping for a player by player ID
+    public float GetPlayerPing(string playerId)
+    {
+        if (playerPings.TryGetValue(playerId, out float ping))
+        {
+            return ping;
+        }
+        return 0f;
+    }
+
+    // After game starts, map player IDs to client IDs
+    public void MapPlayerIdToClientId(string playerId, ulong clientId)
+    {
+        playerClientIds[playerId] = clientId;
+    }
+
+    // Get ping by client ID (used in game)
+    public float GetPlayerPingByClientId(ulong clientId)
+    {
+        foreach (var kvp in playerClientIds)
+        {
+            if (kvp.Value == clientId)
+            {
+                return GetPlayerPing(kvp.Key);
+            }
+        }
+        return 0f;
+    }
+
+    // Call this when players join lobby
+    public void RegisterPlayer(string playerId, ulong clientId = 0)
+    {
+        playerPings[playerId] = 0;
+        if (clientId != 0)
+        {
+            playerClientIds[playerId] = clientId;
+        }
     }
 }

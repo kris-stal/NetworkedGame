@@ -3,7 +3,6 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 using Unity.Services.Authentication;
-using Unity.VisualScripting;
 using Unity.Services.Lobbies.Models;
 using System.Threading.Tasks;
 
@@ -32,6 +31,8 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private GameObject lobbyListItem;
     [SerializeField] private Transform lobbyListContent;
     private List<GameObject> instantiatedLobbyItems = new List<GameObject>();
+    private Dictionary<string, float> playerPings = new Dictionary<string, float>();
+
 
 
     [SerializeField] private GameObject reconnectionPanel;
@@ -155,7 +156,7 @@ public class MenuUIManager : MonoBehaviour
         ClearLobbyList();
         
         // Search for lobbies
-        List<Lobby> lobbies = await lobbyManagerInstance.SearchLobbies();
+        List<Lobby> lobbies = await lobbyManagerInstance.SearchAndRefreshLobbies();
         
         // Display lobbies
         DisplayLobbies(lobbies);
@@ -215,10 +216,8 @@ public class MenuUIManager : MonoBehaviour
         
         if (!success)
         {
-            // Re-enable buttons if join failed
             SetJoinButtonsInteractable(true);
             Debug.LogError("Failed to join lobby");
-            SetJoinButtonsInteractable(true);
             return;
         }
 
@@ -295,7 +294,7 @@ public class MenuUIManager : MonoBehaviour
             // Authenticate if not already signed in
             if (!AuthenticationService.Instance.IsSignedIn)
             {
-                await menuManagerInstance.AuthenticatePlayer();
+                await menuManagerInstance.Authenticate(playerName);
             }
             else
             {
@@ -362,11 +361,6 @@ public class MenuUIManager : MonoBehaviour
         }
     }
 
-    private void OnSearchLobbiesButtonClicked()
-    {
-        lobbyListPanel.SetActive(true);
-    }
-
     // Event handlers for lobby
     private void OnStartGameButtonClicked()
     {
@@ -403,7 +397,7 @@ public class MenuUIManager : MonoBehaviour
         }
     }
 
-        private void OnNetworkStressButtonClicked()
+    private void OnNetworkStressButtonClicked()
     {
         if (menuManagerInstance == null)
         {
@@ -444,7 +438,7 @@ public class MenuUIManager : MonoBehaviour
 
     private void UpdatePlayerList()
     {
-        if (menuManagerInstance == null) return;
+        if (menuManagerInstance == null || lobbyManagerInstance == null ) return;
 
         // Clear current player list
         foreach (Transform child in playerListContent)
