@@ -11,9 +11,11 @@ public class MenuUIManager : MonoBehaviour
     public static MenuUIManager Instance { get; private set; } // Ensures that the menuManager can only be read by other scripts, but only this script can modify it.
     
     
-    // Menu Manager script
-    [SerializeField] private MenuManager menuManagerInstance;
-    [SerializeField] private LobbyManager lobbyManagerInstance;
+    // Reference other scripts via CoreManager
+    private CoreManager coreManagerInstance;
+    private MenuManager menuManagerInstance;
+    private LobbyManager lobbyManagerInstance;
+
 
     // Reference UI Elements
     // Sign In Sceen
@@ -23,6 +25,7 @@ public class MenuUIManager : MonoBehaviour
 
     // Main Menu Screen
     [SerializeField] private GameObject mainMenuUI;
+    [SerializeField] private TextMeshProUGUI usernameText;
     [SerializeField] private TMPro.TMP_InputField codeInputBox;
     [SerializeField] private Button createLobbyButton;
     [SerializeField] private Button joinLobbyWithCodeButton;
@@ -31,7 +34,6 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private GameObject lobbyListItem;
     [SerializeField] private Transform lobbyListContent;
     private List<GameObject> instantiatedLobbyItems = new List<GameObject>();
-    private Dictionary<string, float> playerPings = new Dictionary<string, float>();
 
 
 
@@ -51,63 +53,38 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private Transform playerListContent;
     [SerializeField] private GameObject playerListItemPrefab;
 
+    private string playerName;
 
-    // Ran when script is created - before Start
+
+    // Awake is ran when script is created - before Start
     private void Awake() {
         // Set Singleton Pattern
-        if (Instance == null)
+        // If theres an instance already which is not this one 
+        if (Instance != null && Instance != this) 
         {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
+            Destroy(gameObject); // destroy this one to prevent duplicates
             return;
         }
+
+        // Else, there is no other instance so set this as the instance
+        Instance = this;
+
+
+        // Show sign in screen by default
         ShowSigninScreen();
     }
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     private async void Start()
     {
-        // Ensure Unity services are initialized
-        await Unity.Services.Core.UnityServices.InitializeAsync();
-        
-        // Ensure Menu Manager exists
-        if (menuManagerInstance == null)
+        // Assign manager instances
+        coreManagerInstance = CoreManager.Instance;
+        lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
+        menuManagerInstance = coreManagerInstance.menuManagerInstance;
+
+        bool isUnityServiceInitialized = await coreManagerInstance.InitializeUnityServices();
+        if (isUnityServiceInitialized)
         {
-            menuManagerInstance = MenuManager.Instance;
-
-            if (menuManagerInstance == null)
-            {
-                Debug.LogError("menuManager instance not found! Attempting to find in scene.");
-                menuManagerInstance = FindFirstObjectByType<MenuManager>();
-                
-                if (menuManagerInstance == null)
-                {
-                    Debug.LogError("menuManager not found in scene either!");
-                }
-            }
-        }
-
-        // Ensure Lobby Manager exists
-        if (lobbyManagerInstance== null)
-        {
-            lobbyManagerInstance = LobbyManager.Instance;
-
-            if (lobbyManagerInstance == null)
-            {
-                Debug.LogError("lobbyManagerInstance not found! Attempting to find in scene.");
-                lobbyManagerInstance = FindFirstObjectByType<LobbyManager>();
-                
-                if (lobbyManagerInstance == null)
-                {
-                    Debug.LogError("lobbyManagerInstance not found in scene either!");
-                }
-            }
-        }
-
-
         // Check if player is already signed in
         if (AuthenticationService.Instance.IsSignedIn)
         {
@@ -118,22 +95,28 @@ public class MenuUIManager : MonoBehaviour
             if (!string.IsNullOrEmpty(savedName))
             {
                 Debug.Log($"Restoring player name: {savedName}");
-                menuManagerInstance.SetPlayerName(savedName);
+                lobbyManagerInstance.SetPlayerName(savedName);
             }
             else
             {
                 Debug.LogWarning("No player name found, using default name.");
-                menuManagerInstance.SetPlayerName("Player"); // Fallback name
+                lobbyManagerInstance.SetPlayerName("Player " + Random.Range(1, 99)); // Fallback name
             }
 
             ShowMainMenuScreen();
         }
+
         else
-        {
-            ShowSigninScreen();
+            {
+                ShowSigninScreen();
+            }
         }
-        
-        lobbyListPanel.SetActive(false);
+
+        else 
+        {
+            Debug.LogError("Unity Services not initialized");
+        }
+
 
         // Set up button listeners
         signInButton.onClick.AddListener(OnSigninButtonClicked);
@@ -147,25 +130,28 @@ public class MenuUIManager : MonoBehaviour
         startNetworkStressButton.onClick.AddListener(OnNetworkStressButtonClicked);
     }
 
+    // Update is called once per frame
+    void Update()
+    {
+        if (lobbyUI.activeSelf)
+        {
+            UpdateLobbyUI();
+        }
+    }
+
     public async Task SearchAndDisplayLobbies()
     {
-        // Show loading indicator or disable button while searching
-        searchLobbiesButton.interactable = false;
-        
         // Clear previous lobby items
         ClearLobbyList();
         
         // Search for lobbies
         List<Lobby> lobbies = await lobbyManagerInstance.SearchAndRefreshLobbies();
         
-        // Display lobbies
-        DisplayLobbies(lobbies);
-        
-        // Re-enable search button
-        searchLobbiesButton.interactable = true;
-        
         // Show the lobby panel
         lobbyListPanel.SetActive(true);
+
+        // Display lobbies
+        DisplayLobbies(lobbies);
     }
     
     private void DisplayLobbies(List<Lobby> lobbies)
@@ -208,41 +194,24 @@ public class MenuUIManager : MonoBehaviour
     
     private async void OnJoinLobbyClicked(string lobbyId)
     {
-        // Disable join buttons while joining
-        SetJoinButtonsInteractable(false);
-        
         // Call join lobby method from your lobby manager
         bool success = await lobbyManagerInstance.JoinLobbyById(lobbyId);
         
         if (!success)
         {
-            SetJoinButtonsInteractable(true);
             Debug.LogError("Failed to join lobby");
             return;
         }
 
+
+        // show and clear lobby list UI
         lobbyListPanel.SetActive(false);
+        ClearLobbyList();
+
+
+        // Show and update lobby UI
         ShowLobbyScreen();
-    }
-    
-    private void SetJoinButtonsInteractable(bool interactable)
-    {
-        foreach (GameObject item in instantiatedLobbyItems)
-        {
-            LobbyListItem listItem = item.GetComponent<LobbyListItem>();
-            if (listItem != null)
-            {
-                listItem.JoinButton.interactable = interactable;
-            }
-        }
-    }
-    // Update is called once per frame
-    void Update()
-    {
-        if (lobbyUI.activeSelf)
-        {
-            UpdateLobbyUI();
-        }
+        UpdateLobbyUI();
     }
 
     public void ShowSigninScreen()
@@ -257,6 +226,8 @@ public class MenuUIManager : MonoBehaviour
         signinUI.SetActive(false);
         mainMenuUI.SetActive(true);
         lobbyUI.SetActive(false);
+
+        usernameText.text = playerName;
     }
     
     public void ShowLobbyScreen()
@@ -273,16 +244,12 @@ public class MenuUIManager : MonoBehaviour
     {
         if (menuManagerInstance == null)
         {
-            menuManagerInstance = MenuManager.Instance;
-            if (menuManagerInstance == null)
-            {
                 Debug.LogError("Cannot sign in: menuManager not found!");
                 return;
-            }
         }
 
         // Ensure player enters a name
-        string playerName = playerNameInput.text.Trim();
+        playerName = playerNameInput.text.Trim();
         if (string.IsNullOrEmpty(playerName))
         {
             Debug.LogWarning("Please enter a player name.");
@@ -306,7 +273,7 @@ public class MenuUIManager : MonoBehaviour
             Debug.Log($"Player name updated to {playerName}");
 
             // Store locally
-            menuManagerInstance.SetPlayerName(playerName);
+            lobbyManagerInstance.SetPlayerName(playerName);
 
             // Proceed to main menu
             ShowMainMenuScreen();
@@ -327,7 +294,7 @@ public class MenuUIManager : MonoBehaviour
             return;
         }
 
-        bool created = await menuManagerInstance.CreateLobby();
+        bool created = await lobbyManagerInstance.CreateLobby();
         
         if (created)
         {
@@ -352,12 +319,13 @@ public class MenuUIManager : MonoBehaviour
             return;
         }
 
-        bool joined = await menuManagerInstance.JoinLobbyByCode(code);
+        bool joined = await lobbyManagerInstance.JoinLobbyByCode(code);
         
         if (joined)
         {
             lobbyListPanel.SetActive(false);
             ShowLobbyScreen();
+            UpdateLobbyUI();
         }
     }
 
@@ -385,11 +353,10 @@ public class MenuUIManager : MonoBehaviour
         if (menuManagerInstance == null)
         {
             Debug.LogError("Cannot leave lobby: menuManager not found!");
-            ShowMainMenuScreen();
             return;
         }
 
-        bool left = await menuManagerInstance.LeaveLobby();
+        bool left = await lobbyManagerInstance.LeaveLobby();
         
         if (left)
         {

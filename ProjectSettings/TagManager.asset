@@ -11,6 +11,9 @@ TagManager:
   - MenuUIManager
   - LobbyManager
   - NetworkManager
+  - MenuManager
+  - GameUIManager
+  - GameManager
   layers:
   - Default
   - TransparentFX

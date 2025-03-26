@@ -1,4 +1,7 @@
+using System.Threading.Tasks;
 using Unity.Netcode;
+using Unity.Services.Authentication;
+using Unity.Services.Core;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -7,8 +10,7 @@ using UnityEngine.SceneManagement;
 public class CoreManager : MonoBehaviour
 {
     // Singleton instance references for this Core Manager
-    private static CoreManager _instance;
-    public static CoreManager Instance => _instance;
+    public static CoreManager Instance { get; private set; }
     
     // other Manager references
     public NetworkManager networkManagerInstance { get; private set; }
@@ -32,29 +34,31 @@ public class CoreManager : MonoBehaviour
     private bool isNetworkInitialized = false;
 
 
-    // Awake is first called
-    void Awake()
+    // Awake is ran when script is created - before Start
+    private async void Awake()
     {
-        // Singleton to ensure only one instance exists
-        if (_instance == null)
-        {
-            _instance = this;
-            DontDestroyOnLoad(gameObject); // Keep alive across scenes
-        }
+        // Set Singleton Pattern
         // If theres an instance already which is not this one (likely as this was loaded in new scene)
-        else if (_instance != this) 
+        if (Instance != null && Instance != this) 
         {
-            Destroy(gameObject);
+            Destroy(gameObject); // destroy this one to prevent duplicates
+            return;
         }
 
+        // Else, there is no other instance so set this as the instance
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
 
-        // Initialize Managers at start
+
+        // Initialize Services and Managers at start
+        await InitializeUnityServices();
         InitializeNetworkManager();
         InitializeManagerInstances();
               
         // Subscribe to scene loaded event
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
+    
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     { 
@@ -68,61 +72,93 @@ public class CoreManager : MonoBehaviour
         
     }
 
-    private void InitializeNetworkManager()
-    {
-        if (isNetworkInitialized) return; // If already initialized, exit
 
-        // First, check if a singleton instance of NetworkManager already exists
+    public async Task<bool> InitializeUnityServices(string playerProfile = null)
+    {
+        try
+        {
+            if (UnityServices.State == ServicesInitializationState.Initialized)
+            {
+                Debug.Log("Unity Services already initialized.");
+                return true;
+            }
+
+            Debug.Log("Initializing Unity Services...");
+
+            InitializationOptions options = new InitializationOptions();
+            if (!string.IsNullOrEmpty(playerProfile))
+            {
+                options.SetProfile(playerProfile);
+            }
+
+            await UnityServices.InitializeAsync(options);
+            Debug.Log("Unity Services initialized successfully");
+            return true;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Failed to initialize Unity Services: {e.Message}");
+            return false;
+        }
+    }
+
+   public bool InitializeNetworkManager()
+    {
+        if (isNetworkInitialized) return true; // If already initialized, exit
+
+        // 1️⃣ Check if NetworkManager.Singleton already exists
         if (NetworkManager.Singleton != null)
         {
             Debug.Log("NetworkManager singleton already exists.");
-            DontDestroyOnLoad(NetworkManager.Singleton.gameObject);
+            networkManagerInstance = NetworkManager.Singleton; // Ensure reference consistency
+            DontDestroyOnLoad(networkManagerInstance.gameObject);
             isNetworkInitialized = true;
-            return;
+            return true;
         }
 
-        // Second, check if a NetworkManager exists in the scene using a tag
+        // 2️⃣ Check if a NetworkManager exists in the scene using a tag
         GameObject existingNetworkManager = GameObject.FindGameObjectWithTag("NetworkManager");
         if (existingNetworkManager != null)
         {
             Debug.Log("NetworkManager found in scene.");
+            networkManagerInstance = existingNetworkManager.GetComponent<NetworkManager>();
+
+            if (networkManagerInstance == null)
+            {
+                Debug.LogError("Found NetworkManager object, but it has no NetworkManager component!");
+                return false;
+            }
+
             DontDestroyOnLoad(existingNetworkManager);
             isNetworkInitialized = true;
-            return;
+            return true;
         }
 
-        // Third, If no singleton and no existing object in scene, instantiate from prefab
-        if (networkManagerPrefab != null) // Only if there is a prefab set
+        // 3️⃣ If no existing instance, instantiate from prefab
+        if (networkManagerPrefab != null)
         {
-            // Instantiate the whole GameObject
-            GameObject networkManagerObject = Instantiate(networkManagerPrefab); 
+            GameObject networkManagerObject = Instantiate(networkManagerPrefab);
+            networkManagerInstance = networkManagerObject.GetComponent<NetworkManager>();
 
-            // Ensure the NetworkManager component is attached to the instantiated GameObject
-            networkManagerInstance = networkManagerObject.GetComponent<NetworkManager>(); 
-
-            // If it's missing, log an error
             if (networkManagerInstance == null)
             {
                 Debug.LogError("NetworkManager component missing from the prefab.");
-                return;
+                return false;
             }
 
-            DontDestroyOnLoad(networkManagerObject); // Ensure it persists across scenes
+            DontDestroyOnLoad(networkManagerObject);
             Debug.Log("NetworkManager instantiated from prefab.");
+
+            isNetworkInitialized = true;
+            return true;
         }
 
-        // Not found
-        else 
-        {
-            Debug.LogError("NetworkManager prefab not assigned in inspector!");
-            return;
-        }
-
-        isNetworkInitialized = true;
-        Debug.Log("NetworkManager initialization complete.");
+        // 4️⃣ No prefab assigned, so fail
+        Debug.LogError("NetworkManager prefab not assigned in inspector!");
+        return false;
     }
 
-    private void InitializeManagerInstances()
+    public void InitializeManagerInstances()
     {
         // Always find Lobby Manager which is persistent between scenes.
         if (lobbyManagerInstance == null)
@@ -161,7 +197,6 @@ public class CoreManager : MonoBehaviour
                 {
                     GameObject menuManagerObject = Instantiate(menuManagerPrefab);
                     menuManagerInstance = menuManagerObject.GetComponent<MenuManager>();
-                    DontDestroyOnLoad(menuManagerObject);
                     Debug.Log("MenuManager instantiated from prefab.");
                 }
 
@@ -177,7 +212,6 @@ public class CoreManager : MonoBehaviour
                 {
                     GameObject menuUIManagerObject = Instantiate(menuUIManagerPrefab);
                     menuUIManagerInstance = menuUIManagerObject.GetComponent<MenuUIManager>();
-                    DontDestroyOnLoad(menuUIManagerObject);
                     Debug.Log("MenuUIManager instantiated from prefab.");
                 }
 
@@ -186,7 +220,7 @@ public class CoreManager : MonoBehaviour
         }
 
         // For Game scene
-        else if (currentScene == "BallArena")
+        else if (currentScene == "BallArena" || currentScene == "NetworkStressTest")
         {
             // Find GameManager and GameUIManager
             if (gameManagerInstance == null)
@@ -198,7 +232,6 @@ public class CoreManager : MonoBehaviour
                 {
                     GameObject gameManagerObject = Instantiate(gameManagerPrefab);
                     gameManagerInstance = gameManagerObject.GetComponent<GameManager>();
-                    DontDestroyOnLoad(gameManagerObject);
                     Debug.Log("GameManager instantiated from prefab.");
                 }
 
@@ -214,7 +247,6 @@ public class CoreManager : MonoBehaviour
                 {
                     GameObject gameUIManagerObject = Instantiate(gameUIManagerPrefab);
                     gameUIManagerInstance = gameUIManagerObject.GetComponent<GameUIManager>();
-                    DontDestroyOnLoad(gameUIManagerObject);
                     Debug.Log("GameUIManager instantiated from prefab.");
                 }
 

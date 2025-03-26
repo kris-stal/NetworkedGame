@@ -9,8 +9,12 @@ public class GameUIManager : NetworkBehaviour
     // Singleton Pattern
     public static GameUIManager Instance { get; private set; }
 
-    // Game Manager script
-    private GameManager GameManagerInstance;
+    // Reference other scripts via CoreManager
+    private CoreManager coreManagerInstance;
+    private GameManager gameManagerInstance;
+
+    private float lastResolutionPing = -1;
+
 
     // Variables
     // In Game UI
@@ -44,21 +48,30 @@ public class GameUIManager : NetworkBehaviour
     // Awake is called when the script instance is loaded, before Start
     private void Awake()
     {
+        // Set Singleton Pattern
+        // If theres an instance already which is not this one 
+        if (Instance != null && Instance != this) 
+        {
+            Destroy(gameObject); // destroy this one to prevent duplicates
+            return;
+        }
+
+        // Else, there is no other instance so set this as the instance
         Instance = this;
 
-        GameManagerInstance = GameManager.Instance;
-
+        // Hide network monitor by default
         networkMonitor.Visible = false; 
 
+
+        // Button listeners
         resumeGameButton.onClick.AddListener(() => { // On resume game button click
 
             menuUI.gameObject.SetActive(false);
         });
 
-
         leaveGameButton.onClick.AddListener(() => { // On resume game button click
 
-            GameManager.Instance.LeaveGame();
+            gameManagerInstance.LeaveGame();
         });
     }
 
@@ -67,6 +80,10 @@ public class GameUIManager : NetworkBehaviour
         // Hide countdown and winner panels initially
         ShowCountdown(false);
         ShowWinnerScreen(false);
+
+        // Assign manager instances
+        coreManagerInstance = CoreManager.Instance;
+        gameManagerInstance = coreManagerInstance.gameManagerInstance;
         
         // Add listener to new game button
         if (newGameButton != null)
@@ -79,7 +96,7 @@ public class GameUIManager : NetworkBehaviour
     // Start is called once before the first execution of Update after the MonoBehaviour is created, after Awake
     private void Update()
     {
-        if (GameManager.Instance == null || NetworkManager.Singleton == null) return;
+        if (gameManagerInstance == null || NetworkManager.Singleton == null) return;
 
         // Get all player objects
         GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
@@ -87,8 +104,8 @@ public class GameUIManager : NetworkBehaviour
         // Update ping display for each player
         for (int i = 0; i < players.Length && i < pingTexts.Length; i++)
         {
-            ulong clientId = GameManager.Instance.GetPlayerClientId(players[i]);
-            float ping = GameManager.Instance.GetPlayerPing(clientId);
+            ulong clientId = gameManagerInstance.GetPlayerClientId(players[i]);
+            float ping = gameManagerInstance.GetPlayerPing(clientId);
             
             // Update the UI text
             pingTexts[i].text = $"Player {i+1} Ping: {ping:0}ms";
@@ -117,30 +134,37 @@ public class GameUIManager : NetworkBehaviour
         }
 
         // Handle Score UI
-        player1ScoreText.text = GameManager.Instance.GetPlayer1Score().ToString();
-        player2ScoreText.text = GameManager.Instance.GetPlayer2Score().ToString();
+        player1ScoreText.text = gameManagerInstance.GetPlayer1Score().ToString();
+        player2ScoreText.text = gameManagerInstance.GetPlayer2Score().ToString();
     }
 
     // Toggle display of the high ping warning message
-    public void toggleHighPingWarning(Boolean boolean)
+    public void toggleHighPingWarning(bool isActive)
     {
-        highPingWarningText.gameObject.SetActive(boolean);
+        if (highPingWarningText.gameObject.activeSelf != isActive)
+        {
+            highPingWarningText.gameObject.SetActive(isActive);
+        }
     }
 
     public void changeResolution(float ping)
     {
-        if (ping > 50)
+        if (Mathf.Abs(ping - lastResolutionPing) < 10) return; // Avoid small fluctuations
+        lastResolutionPing = ping;
+
+        if (ping > 100)
         {
-            Screen.SetResolution(1280, 720, true); // Medium
+            Screen.SetResolution(640, 360, FullScreenMode.FullScreenWindow);
         }
-        else if (ping > 100)
+        else if (ping > 50)
         {
-            Screen.SetResolution(640, 360, true); // Low
+            Screen.SetResolution(1280, 720, FullScreenMode.FullScreenWindow);
         }
-        else 
+        else
         {
-            Screen.SetResolution(1920, 1080, true); // High
+            Screen.SetResolution(1920, 1080, FullScreenMode.FullScreenWindow);
         }
+        Debug.Log($"Resolution changed to: {Screen.width} x {Screen.height}");
     }
 
         // Methods for countdown display
@@ -182,9 +206,9 @@ public class GameUIManager : NetworkBehaviour
     // Button click handler for new game
     private void OnNewGameButtonClicked()
     {
-        if (GameManager.Instance != null)
+        if (gameManagerInstance != null)
         {
-            GameManager.Instance.StartNewGame();
+            gameManagerInstance.StartNewGame();
             ShowWinnerScreen(false);
         }
     }

@@ -21,6 +21,16 @@ public class NetworkStressTest : NetworkBehaviour
         public float randomFloat;
         public List<float> randomMatrix;
 
+        public void Initialize(int matrixSize)
+        {
+            _int = 0;
+            _bool = false;
+            message = "Initial";
+            position = Vector3.zero;
+            randomFloat = 0f;
+            randomMatrix = new List<float>(new float[matrixSize]); // Pre-allocate matrix
+        }
+
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
             serializer.SerializeValue(ref _int);
@@ -29,11 +39,11 @@ public class NetworkStressTest : NetworkBehaviour
             serializer.SerializeValue(ref position);
             serializer.SerializeValue(ref randomFloat);
 
-            // Manually serialize the large matrix
+            int count = randomMatrix.Count;
+            serializer.SerializeValue(ref count);
+
             if (serializer.IsWriter)
             {
-                int count = randomMatrix.Count;
-                serializer.SerializeValue(ref count);
                 for (int i = 0; i < count; i++)
                 {
                     float value = randomMatrix[i];
@@ -42,8 +52,6 @@ public class NetworkStressTest : NetworkBehaviour
             }
             else
             {
-                int count = 0;
-                serializer.SerializeValue(ref count);
                 if (randomMatrix == null || randomMatrix.Count != count)
                     randomMatrix = new List<float>(new float[count]);
 
@@ -61,6 +69,11 @@ public class NetworkStressTest : NetworkBehaviour
     {
         if (IsOwner)
         {
+            // Initialize MyCustomData with a pre-allocated matrix
+            MyCustomData data = new MyCustomData();
+            data.Initialize(100);
+            customData.Value = data;
+
             StartCoroutine(RandomDataSyncRoutine());
             StartCoroutine(RPCSpamRoutine());
         }
@@ -70,27 +83,22 @@ public class NetworkStressTest : NetworkBehaviour
     {
         while (true)
         {
-            yield return new WaitForSeconds(0.005f); // Adjust frequency of updates
+            yield return new WaitForSeconds(1f); // Reduce update rate to optimize
 
-            // Generate random values
-            randomNumber.Value = Random.Range(0, 1000);
-
-            // Generate the matrix
-            List<float> largeMatrix = new List<float>(10000);
-            for (int i = 0; i < 10000; i++)
+            // Modify existing values instead of reallocating memory
+            for (int i = 0; i < 10; i++)
             {
-                largeMatrix.Add(Random.Range(-1000f, 1000f));
+                customData.Value.randomMatrix[i] = Random.Range(-1000f, 1000f);
             }
 
-            customData.Value = new MyCustomData
-            {
-                _int = Random.Range(0, 500),
-                _bool = Random.value > 0.5f,
-                message = "Data-" + Random.Range(0, 1000),
-                position = new Vector3(Random.Range(-10f, 10f), 0, Random.Range(-10f, 10f)),
-                randomFloat = Random.Range(0f, 100f),
-                randomMatrix = largeMatrix,
-            };
+            MyCustomData updatedData = customData.Value;
+            updatedData._int = Random.Range(0, 500);
+            updatedData._bool = Random.value > 0.5f;
+            updatedData.message = "Data-" + Random.Range(0, 1000);
+            updatedData.position = new Vector3(Random.Range(-10f, 10f), 0, Random.Range(-10f, 10f));
+            updatedData.randomFloat = Random.Range(0f, 100f);
+
+            customData.Value = updatedData; // Assign the modified struct
         }
     }
 
@@ -98,8 +106,8 @@ public class NetworkStressTest : NetworkBehaviour
     {
         while (true)
         {
-            yield return new WaitForSeconds(0.005f); // 200 RPCs per second for each client
-            int[] bigArray = new int[5000]; // 20KB per RPC
+            yield return new WaitForSeconds(0.5f); // 200 RPCs per second for each client
+            int[] bigArray = new int[50]; // 20KB per RPC
             for (int i = 0; i < bigArray.Length; i++) bigArray[i] = Random.Range(0, 1000);
             
             SendSpamServerRpc(bigArray);

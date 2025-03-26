@@ -10,6 +10,13 @@ public class GameManager : NetworkBehaviour
     // Singleton Pattern for easy access to the gameManager from other scripts and to prevent duplicates
     public static GameManager Instance { get; private set; }
 
+        
+    // Reference other scripts via CoreManager
+    private CoreManager coreManagerInstance;
+    private GameUIManager gameUIManagerInstance;
+    private LobbyManager lobbyManagerInstance;
+
+
     // Variables
     // Network variables for player scores
     private NetworkVariable<int> playerScore1 = new NetworkVariable<int>(
@@ -51,7 +58,6 @@ public class GameManager : NetworkBehaviour
 
     
     // Other Network Variables
-    [SerializeField] private gameUIManager gameUIManagerInstance;  // Get gameUIManager script
     
     [System.Serializable] // Class to store state of game
     public class GameState
@@ -94,6 +100,7 @@ public class GameManager : NetworkBehaviour
     private Dictionary<ulong, float> playerPings = new Dictionary<ulong, float>(); // Player pings dictionary
 
     private Dictionary<ulong, string> playerIds = new Dictionary<ulong, string>(); // Maps NetworkObject IDs to Auth IDs
+    
 
 
     // Game Variables
@@ -113,29 +120,55 @@ public class GameManager : NetworkBehaviour
     // Awake is called when the script instance is loaded, before Start
     private void Awake()
     {
-        // Ensuring Singleton Pattern
-        if (Instance == null)
+        // Set Singleton Pattern
+        // If theres an instance already which is not this one 
+        if (Instance != null && Instance != this) 
         {
-            // If not, set this instance as the singleton
-            Instance = this;
-        }
-        else
-        {
-            // If an instance already exists, destroy the duplicate
-            Destroy(gameObject);
+            Destroy(gameObject); // destroy this one to prevent duplicates
             return;
         }
+
+        // Else, there is no other instance so set this as the instance
+        Instance = this;
+
     }
 
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created, after Awake
     void Start()
     {
-        // Subscribe to client dis/connect event
-        NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnect;
-        NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnect;
-    }
+        // Make sure NetworkManager is ready
+        if (NetworkManager.Singleton != null)
+        {
+            // Subscribe to client disconnect/connect events
+            NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnect;
+            NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnect;
+        }
+        else
+        {
+            Debug.LogError("NetworkManager is not available.");
+            return;
+        }
 
+        // Assign manager instances
+        coreManagerInstance = CoreManager.Instance;
+        lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
+        gameUIManagerInstance = coreManagerInstance.gameUIManagerInstance;
+
+        // Spawn Positions
+        playerSpawnPos.Add(new Vector3(-5, 1, 0)); // spawn pos 1
+        playerSpawnPos.Add(new Vector3(5, 1, 0)); // spawn pos 2
+        Debug.Log(playerSpawnPos.Count); // Output num of spawn pos for testing
+
+        onLoadArena();
+
+
+        // Call RPC only if the object is spawned and we are the server
+        if (IsServer && IsSpawned)
+        {
+            StartInitialCountdown();
+        }
+    }
 
     // Called every frame
     private void Update()
@@ -151,18 +184,16 @@ public class GameManager : NetworkBehaviour
         // Check for unstable connection
         if (IsClient && !IsServer)
         {
-            float myPing = GetPlayerPing(NetworkManager.Singleton.LocalClientId); // Get player's ping
-
+            
+            float myPing = GetPlayerPing(NetworkManager.Singleton.LocalClientId);
             gameUIManagerInstance.changeResolution(myPing);
-            if (myPing > 100f) // 100ms threshold for unstable connection
+
+            bool isHighPing = myPing > 50f;
+            gameUIManagerInstance.toggleHighPingWarning(isHighPing);
+
+            if (myPing > 100f)
             {
-                // Display unstable connection message
-                Debug.Log("Connection unstable: High ping detected (" + myPing + "ms)");
-                gameUIManagerInstance.toggleHighPingWarning(true); // Show warning
-            }
-            else
-            {
-                gameUIManagerInstance.toggleHighPingWarning(false); // Hide warning
+                Debug.Log($"Connection unstable: High ping detected ({myPing}ms)");
             }
         }
 
@@ -240,11 +271,6 @@ public class GameManager : NetworkBehaviour
 
         gameInProgress.OnValueChanged += OnGameInProgressChanged;
 
-        // Spawn Positions
-        playerSpawnPos.Add(new Vector3(-5, 1, 0)); // spawn pos 1
-        playerSpawnPos.Add(new Vector3(5, 1, 0)); // spawn pos 2
-        Debug.Log(playerSpawnPos.Count); // Output num of spawn pos for testing
-
         winnerScreenShown = false;
     }
 
@@ -258,7 +284,10 @@ public class GameManager : NetworkBehaviour
         gameOver.Value = false;
         countdownTimer.Value = INITIAL_COUNTDOWN;
         winnerScreenShown = false;
-        
+
+
+        FreezeBallAndPlayers();
+
         // Reset player positions
         ResetPlayersServerRpc();
         
@@ -425,7 +454,7 @@ public class GameManager : NetworkBehaviour
         if (clientId == NetworkManager.Singleton.LocalClientId)
         {
             Debug.Log("Host (server) is disconnecting, ending game");
-            await LobbyManager.Instance.LeaveLobby(); // delete lobby
+            await lobbyManagerInstance.LeaveLobby(); // delete lobby
             NetworkManager.Singleton.Shutdown(); // end network connection
             return;
         }

@@ -11,60 +11,55 @@ public class MenuManager : MonoBehaviour
     public static MenuManager Instance { get; private set; }
 
     // Reference other scripts via CoreManager
-    private CoreManager coreManager;
+    private CoreManager coreManagerInstance;
     private MenuUIManager menuUIManagerInstance;
     private LobbyManager lobbyManagerInstance;
-    private GameManager gameManagerInstance;
 
     // Private Variables only this script accesses
     private string playerName;
     
 
-    // Awake is called first
+    // Awake is ran when script is created - before Start
     private void Awake()
     {
         // Set Singleton Pattern
-        if (Instance == null)
+        // If theres an instance already which is not this one 
+        if (Instance != null && Instance != this) 
         {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
+            Destroy(gameObject); // destroy this one to prevent duplicates
             return;
         }
 
-        // Assign manager instances
-        coreManager = CoreManager.Instance;
-        menuUIManagerInstance = coreManager.menuUIManagerInstance;
-        lobbyManagerInstance = coreManager.lobbyManagerInstance;
-        gameManagerInstance = coreManager.gameManagerInstance;
+        // Else, there is no other instance so set this as the instance
+        Instance = this;
+
     }
 
     // Start is called before first frame update, after Awake
-    private async void Start()
+    private void Start()
     {
-        // Firstly checking if Unity Services is active,
-        // if player was already signed in, 
-        // and if player was in game already.
-        try
-        {
-            await UnityServices.InitializeAsync();
-            Debug.Log("Unity Services initialized successfully");
+        // Assign manager instances
+        coreManagerInstance = CoreManager.Instance;
+        menuUIManagerInstance = coreManagerInstance.menuUIManagerInstance;
+        lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
 
-            // Check if the user is already signed in
-            if (AuthenticationService.Instance.IsSignedIn)
-            {
-                Debug.Log("User already signed in, skipping sign-in screen.");
-                menuUIManagerInstance.ShowMainMenuScreen();
-                return;
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Failed to initialize Unity Services: {e.Message}");
-            return;
-        }
+        // Move to an event?
+        // bool isUnityInitialized = await coreManagerInstance.InitializeUnityServices();
+
+        //     if (isUnityInitialized)
+        //     {
+        //         if (AuthenticationService.Instance.IsSignedIn)
+        //         {
+        //             Debug.Log("User already signed in, skipping sign-in screen.");
+        //             menuUIManagerInstance.ShowMainMenuScreen();
+        //             return;
+        //         }
+        //     }
+        //     else
+        //     {
+        //         Debug.LogError("Unity Services failed, cannot proceed!");
+        //         // Handle failure (show error message, retry, etc.)
+        //     }
 
         // Always show sign-in screen first
         menuUIManagerInstance.ShowSigninScreen();
@@ -72,24 +67,15 @@ public class MenuManager : MonoBehaviour
         Debug.Log("Showing sign-in screen. User must sign in manually.");
     }
 
-
-    // Setter for player name
-    public void SetPlayerName(string name)
-    {
-        playerName = name;
-        lobbyManagerInstance.SetPlayerName(name);
-    }
-
     public async Task Authenticate(string playerName)
     {
-        try
+    try
         {
-            if (UnityServices.State != ServicesInitializationState.Initialized)
+            bool isInitialized = await CoreManager.Instance.InitializeUnityServices(playerName);
+            if (!isInitialized)
             {
-                Debug.Log("Initializing Unity Services...");
-                InitializationOptions options = new InitializationOptions();
-                options.SetProfile(playerName);
-                await UnityServices.InitializeAsync(options);
+                Debug.LogError("Authentication aborted: Unity Services failed to initialize.");
+                return;
             }
 
             AuthenticationService.Instance.SignedIn += async () =>
@@ -108,73 +94,6 @@ public class MenuManager : MonoBehaviour
         }
     }
 
-    // Create a lobby and start as host
-    public async Task<bool> CreateLobby()
-    {
-        bool lobbyCreated = await lobbyManagerInstance.CreateLobby();
-        if (lobbyCreated)
-        {
-            // Start hosting
-            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
-            {
-                bool success = NetworkManager.Singleton.StartHost();
-                if (!success)
-                {
-                    Debug.LogError("Failed to start as host!");
-                    return false;
-                }
-                Debug.Log("Started as network host");
-            }
-            
-            return true;
-        }
-        
-        return false;
-    }
-
-    // Join a lobby and start as client
-    public async Task<bool> JoinLobbyByCode(string lobbyCode)
-    {
-        bool lobbyJoined = await lobbyManagerInstance.JoinLobbyByCode(lobbyCode);
-        if (lobbyJoined)
-        {
-            // Start as client
-            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
-            {
-                bool success = NetworkManager.Singleton.StartClient();
-                if (!success)
-                {
-                    Debug.LogError("Failed to start as client!");
-                    return false;
-                }
-                Debug.Log("Started as network client");
-            }
-            
-            return true;
-        }
-        
-        return false;
-    }
-
-    // Leave lobby and shut down network connection
-    public async Task<bool> LeaveLobby()
-    {
-        bool leftLobby = await lobbyManagerInstance.LeaveLobby();
-        if (leftLobby)
-        {
-            // Shut down Network Manager connection
-            if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
-            {
-                NetworkManager.Singleton.Shutdown();
-                Debug.Log("Network shutdown");
-            }
-            
-            return true;
-        }
-        
-        return false;
-    }
-
     // Start game as host
     public void StartGame()
     {
@@ -187,7 +106,6 @@ public class MenuManager : MonoBehaviour
             {
                 // Load the game scene
                 NetworkManager.Singleton.SceneManager.LoadScene("BallArena", LoadSceneMode.Single);
-                gameManagerInstance.onLoadArena();
                 Debug.Log("Loading scene: BallArena");
             }
             else

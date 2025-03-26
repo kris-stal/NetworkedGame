@@ -5,6 +5,10 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System;
+using Unity.Netcode;
+using System.Net;
+using System.Net.Sockets;
+using Unity.Netcode.Transports.UTP;
 
 public class LobbyManager : MonoBehaviour
 {
@@ -51,17 +55,17 @@ public class LobbyManager : MonoBehaviour
 
     private void Awake()
     {
-        // Set Singleton Pattern
-        if (Instance == null)
+        // If theres an instance already which is not this one
+        if (Instance != null && Instance != this) 
         {
-            Instance = this;
-            DontDestroyOnLoad(gameObject); // Keep LobbyManager between scenes
-        }
-        else
-        {
-            Destroy(gameObject);
+            Destroy(gameObject); // destroy this one to prevent duplicates
             return;
         }
+
+        // Else, there is no other instance so set this as the instance
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+
 
         // Initialize timers
         heartbeatTimer = 15f;
@@ -143,6 +147,34 @@ public class LobbyManager : MonoBehaviour
         return false;
     }
 
+    // Get local IP address
+    private string GetLocalIPAddress()
+    {
+        try 
+        {
+            var host = Dns.GetHostEntry(Dns.GetHostName());
+            foreach (var ip in host.AddressList)
+            {
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    return ip.ToString();
+                }
+            }
+            return "127.0.0.1"; // Fallback to localhost
+        }
+        catch
+        {
+            return "127.0.0.1";
+        }
+    }
+
+    // Get current port from NetworkManager
+    private int GetCurrentPort()
+    {
+        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        return transport != null ? transport.ConnectionData.Port : 7777; // Default port
+    }
+
     // Creating the lobby
     public async Task<bool> CreateLobby()
     {
@@ -151,10 +183,20 @@ public class LobbyManager : MonoBehaviour
             string lobbyName = playerName + "'s Lobby";
             int maxPlayers = 4;
 
+            // Get host's IP and Port
+            string hostIP = GetLocalIPAddress();
+            int hostPort = GetCurrentPort();
+
             CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
             {
                 IsPrivate = false,
-                Player = GetPlayer()
+                Player = GetPlayer(),
+                Data = new Dictionary<string, DataObject>
+                {
+                    // Store host connection details in lobby metadata
+                    { "HostIP", new DataObject(DataObject.VisibilityOptions.Public, hostIP) },
+                    { "HostPort", new DataObject(DataObject.VisibilityOptions.Public, hostPort.ToString()) }
+                }
             };
 
             Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
@@ -163,6 +205,7 @@ public class LobbyManager : MonoBehaviour
 
             // Output lobby details
             Debug.Log("Created lobby! " + lobby.Name + " " + lobby.MaxPlayers + " " + lobby.Id + " " + lobby.LobbyCode);
+            Debug.Log($"Lobby Host IP: {hostIP}, Port: {hostPort} ");
 
             // Output players
             PrintPlayers(hostLobby);
@@ -171,6 +214,18 @@ public class LobbyManager : MonoBehaviour
             PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
             PlayerPrefs.Save();
 
+            // Start hosting through NetworkManager
+            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+            {
+                bool success = NetworkManager.Singleton.StartHost();
+                if (!success)
+                {
+                    Debug.LogError("Failed to start as host!");
+                    return false;
+                }
+                Debug.Log("Started as network host");
+            }
+            
             return true;
         }
         catch (LobbyServiceException e)
@@ -235,11 +290,37 @@ public class LobbyManager : MonoBehaviour
                 Player = GetPlayer()
             };
             
-            currentLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, options);
-            Debug.Log($"Joined lobby: {currentLobby.Name}");
-            
-            // Here you would typically start heartbeats and handle lobby events
-            
+            joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, options);
+
+            // Retrieve host connection details from lobby metadata
+            if (joinedLobby.Data.TryGetValue("HostIP", out DataObject hostIPData) &&
+                joinedLobby.Data.TryGetValue("HostPort", out DataObject hostPortData))
+            {
+                string hostIP = hostIPData.Value;
+                int hostPort = int.Parse(hostPortData.Value);
+
+                Debug.Log($"Joining lobby with Host IP: {hostIP}, Port: {hostPort}");
+
+                // Configure NetworkManager to connect to host IP and port
+                var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+                if (transport != null)
+                {
+                    transport.SetConnectionData(hostIP, (ushort)hostPort);
+                }
+            }
+
+
+            // Start as client
+            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+            {
+                bool success = NetworkManager.Singleton.StartClient();
+                if (!success)
+                {
+                    Debug.LogError("Failed to start as client!");
+                    return false;
+                }
+                Debug.Log("Started as network client");
+            }
             return true;
         }
         catch (LobbyServiceException e)
@@ -271,7 +352,36 @@ public class LobbyManager : MonoBehaviour
             // save this lobby as last joined lobby for
             PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
             PlayerPrefs.Save();
+            
+            // Retrieve host connection details from lobby metadata
+            if (joinedLobby.Data.TryGetValue("HostIP", out DataObject hostIPData) &&
+                joinedLobby.Data.TryGetValue("HostPort", out DataObject hostPortData))
+            {
+                string hostIP = hostIPData.Value;
+                int hostPort = int.Parse(hostPortData.Value);
 
+                Debug.Log($"Joining lobby with Host IP: {hostIP}, Port: {hostPort}");
+
+                // Configure NetworkManager to connect to host IP and port
+                var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+                if (transport != null)
+                {
+                    transport.SetConnectionData(hostIP, (ushort)hostPort);
+                }
+            }
+
+            // Start as client
+            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+            {
+                bool success = NetworkManager.Singleton.StartClient();
+                if (!success)
+                {
+                    Debug.LogError("Failed to start as client!");
+                    return false;
+                }
+                Debug.Log("Started as network client");
+            }
+            
             return true;
         }
         catch (LobbyServiceException e)
@@ -334,7 +444,7 @@ public class LobbyManager : MonoBehaviour
                 {
                     await DeleteLobby(); // If host, delete lobby before leaving
                 }
-                else 
+                else
                 {
                     await LobbyService.Instance.RemovePlayerAsync(joinedLobby.Id, AuthenticationService.Instance.PlayerId);
                     Debug.Log("Left lobby: " + joinedLobby.Name);
@@ -342,6 +452,23 @@ public class LobbyManager : MonoBehaviour
 
                 joinedLobby = null;
                 hostLobby = null;
+
+                // Shut down Network Manager connection
+                if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+                {
+                    NetworkManager.Singleton.Shutdown();
+                    Debug.Log("Network shutdown");
+                }
+
+                // try 
+                // {
+                //     AuthenticationService.Instance.SignOut();
+                // }
+                // catch (System.Exception e)
+                // {
+                //     Debug.LogError($"Error signing out: {e.Message}");
+                // }
+                
                 return true;
             }
             return false;
