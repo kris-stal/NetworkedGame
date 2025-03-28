@@ -13,7 +13,7 @@ public class GameUIManager : NetworkBehaviour
     private CoreManager coreManagerInstance;
     private GameManager gameManagerInstance;
 
-    private float lastResolutionPing = -1;
+    private float lastResolutionPing = -5;
 
 
     // Variables

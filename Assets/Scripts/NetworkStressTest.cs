@@ -106,8 +106,8 @@ public class NetworkStressTest : NetworkBehaviour
     {
         while (true)
         {
-            yield return new WaitForSeconds(0.5f); // 200 RPCs per second for each client
-            int[] bigArray = new int[50]; // 20KB per RPC
+            yield return new WaitForSeconds(0.5f); // 
+            int[] bigArray = new int[50]; //
             for (int i = 0; i < bigArray.Length; i++) bigArray[i] = Random.Range(0, 1000);
             
             SendSpamServerRpc(bigArray);
