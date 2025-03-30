@@ -95,38 +95,50 @@ public class MenuManager : MonoBehaviour
     }
 
     // Start game as host
-    public void StartGame()
+    public async void StartGame()
     {
         if (lobbyManagerInstance.IsHost)
         {
-            // Ensure that the host has connected clients before starting the game
-            if (NetworkManager.Singleton.ConnectedClients.Count == 0)
+
+            Debug.Log($"Starting game check - Connected clients count: {NetworkManager.Singleton.ConnectedClients.Count}");
+            Debug.Log($"Connected client IDs count: {NetworkManager.Singleton.ConnectedClientsIds.Count}");
+
+            // Print all connected clients for debugging
+            foreach (var client in NetworkManager.Singleton.ConnectedClients)
             {
-                Debug.LogError("No clients connected. Cannot start the game.");
-                return; // Prevent starting the game if no clients are connected
+                Debug.Log($"Connected client: ID={client.Key}, IsConnected={client.Value != null}");
             }
 
-            Debug.Log("Starting game as host");
 
-            if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost)
+            // Allow starting even with just the host (client count would be 1)
+            if (NetworkManager.Singleton.ConnectedClients.Count >= 1)
             {
-                Debug.Log($"Connected clients: {NetworkManager.Singleton.ConnectedClientsIds.Count}");
-                foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
+                Debug.Log("Starting game as host");
+
+                if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost)
                 {
-                    if (clientId != 0)
+                    // Small delay to ensure connections are fully established
+                    await Task.Delay(1000);
+                    
+                    Debug.Log($"Final check - Connected clients: {NetworkManager.Singleton.ConnectedClientsIds.Count}");
+                    foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
                     {
                         Debug.Log($"Client connected: {clientId}");
                     }
-                }
 
-                StartGameServerRpc();
+                    StartGameServerRpc();
+                }
+                else 
+                {
+                     Debug.LogError("Network not initialized as host! Cannot start game.");
+                }
             }
-            else
+            else 
             {
-                Debug.LogError("Network not initialized as host! Cannot start game.");
+                Debug.LogError($"No clients or only host connected. Count: {NetworkManager.Singleton.ConnectedClientsIds.Count}");
             }
         }
-        else
+        else 
         {
             Debug.LogError("Cannot start game: not a host");
         }

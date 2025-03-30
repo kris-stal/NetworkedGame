@@ -9,6 +9,7 @@ using Unity.Netcode;
 using System.Net;
 using System.Net.Sockets;
 using Unity.Netcode.Transports.UTP;
+using Unity.Services.Multiplayer;
 using Unity.Services.Relay;
 using Unity.Services.Relay.Models;
 
@@ -180,7 +181,7 @@ public class LobbyManager : MonoBehaviour
     private int GetCurrentPort()
     {
         var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        return transport != null ? transport.ConnectionData.Port : 7778; // Default port is 7777, trying 7778
+        return transport != null ? transport.ConnectionData.Port : 7777; // Default port is 7777, trying 7778
     }
 
     // Creating the lobby
@@ -250,26 +251,39 @@ public class LobbyManager : MonoBehaviour
             string lobbyName = playerName + "'s Lobby";
             int maxPlayers = 4;
 
-            // Allocate a relay server for the host
-            var allocation = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
+            // 1. Create a Relay allocation
+            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
+            
+            // 2. Get the join code for clients to use
+            string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+            
+            // 3. Get the Relay server's endpoint for display purposes
+            var relayServerEndpoint = allocation.ServerEndpoints[0];
+            string hostIP = relayServerEndpoint.Host;
+            int hostPort = relayServerEndpoint.Port;
+            Debug.Log($"Relay server info - IP: {hostIP}, Port: {hostPort}, JoinCode: {joinCode}");
 
-            // Get the Relay server's endpoint (Host and Port)
-            var relayServerEndpoint = allocation.ServerEndpoints[0]; // Typically only one endpoint for Relay
-
-            string hostIP = relayServerEndpoint.Host; // Get the Relay Host (IP address or hostname)
-            int hostPort = relayServerEndpoint.Port; // Get the Relay Port
-
-            Debug.Log($"Host IP: {hostIP}, Port: {hostPort}");
-
-            // Save the Relay information to the lobby's metadata
+            // 4. Configure the transport with the Relay data
+            var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+            if (transport == null)
+            {
+                Debug.LogError("Transport component not found on NetworkManager!");
+                return false;
+            }
+            
+            // This is the critical part - setting up the relay on the transport
+            var relayServerData = AllocationUtils.ToRelayServerData(allocation, "dtls");
+            transport.SetRelayServerData(relayServerData);
+            
+            // 5. Create Lobby with relay join code
             CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
             {
                 IsPrivate = false,
                 Player = GetPlayer(),
                 Data = new Dictionary<string, DataObject>
                 {
-                    { "HostIP", new DataObject(DataObject.VisibilityOptions.Public, hostIP) },
-                    { "HostPort", new DataObject(DataObject.VisibilityOptions.Public, hostPort.ToString()) }
+                    // Store the join code instead of direct IP/port
+                    { "RelayJoinCode", new DataObject(DataObject.VisibilityOptions.Public, joinCode) }
                 }
             };
 
@@ -278,7 +292,7 @@ public class LobbyManager : MonoBehaviour
             hostLobby = lobby;
             joinedLobby = lobby;
 
-            // Start hosting through NetworkManager (with relay connection data)
+            // 6. Start as host
             if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
             {
                 bool success = NetworkManager.Singleton.StartHost();
@@ -287,17 +301,18 @@ public class LobbyManager : MonoBehaviour
                     Debug.LogError("Failed to start as host!");
                     return false;
                 }
-                Debug.Log("Started as network host");
+                Debug.Log("Started as network host through Relay");
             }
 
             return true;
         }
-        catch (LobbyServiceException e)
+        catch (Exception e)
         {
-            Debug.LogError($"Error creating lobby: {e.Message}");
+            Debug.LogError($"Error creating lobby with relay: {e.Message}");
             return false;
         }
     }
+    
 
     public async Task<List<Lobby>> SearchAndRefreshLobbies()
     {
@@ -408,42 +423,46 @@ public class LobbyManager : MonoBehaviour
     {
         try
         {
-            // Define player metadata
-            var playerData = new Dictionary<string, PlayerDataObject>
-            {
-                { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Public, playerName) }
-            };
-
-            // Join the lobby with player metadata
+            // Join the lobby
             var joinOptions = new JoinLobbyByIdOptions
             {
                 Player = new Player
                 {
-                    Data = playerData
+                    Data = new Dictionary<string, PlayerDataObject>
+                    {
+                        { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Public, playerName) }
+                    }
                 }
             };
 
-            // Attempt to join the lobby
+            // Join the lobby
             Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, joinOptions);
             this.joinedLobby = joinedLobby;
 
             Debug.Log($"Successfully joined lobby as {playerName}");
 
-            // Retrieve the Relay server details from the lobby metadata
-            if (joinedLobby.Data.TryGetValue("HostIP", out DataObject hostIPData) &&
-                joinedLobby.Data.TryGetValue("HostPort", out DataObject hostPortData))
+            // Get the relay join code from the lobby data
+            if (joinedLobby.Data.TryGetValue("RelayJoinCode", out DataObject relayJoinCodeData))
             {
-                string hostIP = hostIPData.Value;
-                int hostPort = int.Parse(hostPortData.Value);
+                string joinCode = relayJoinCodeData.Value;
+                Debug.Log($"Retrieved relay join code: {joinCode}");
 
-                Debug.Log($"Joining lobby with Host IP: {hostIP}, Port: {hostPort}");
-
-                // Configure NetworkManager with the relay server details
+                // Join the relay with the join code
+                JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
+                
+                // Set up the transport with the relay data
                 var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
                 if (transport != null)
                 {
-                    transport.SetConnectionData(hostIP, (ushort)hostPort);
-                    Debug.Log($"Client connecting to: {hostIP}:{hostPort}");
+                    var relayServerData = AllocationUtils.ToRelayServerData(joinAllocation, "dtls");
+                    transport.SetRelayServerData(relayServerData);
+                    
+                    Debug.Log("Configured transport with relay data, connecting as client...");
+                }
+                else
+                {
+                    Debug.LogError("Transport component not found on NetworkManager!");
+                    return false;
                 }
 
                 // Start the client
@@ -455,18 +474,24 @@ public class LobbyManager : MonoBehaviour
                         Debug.LogError("Failed to start as client!");
                         return false;
                     }
-                    Debug.Log("Started as network client");
+                    Debug.Log("Started as network client through Relay");
                 }
-            }
 
-            return true;
+                return true;
+            }
+            else
+            {
+                Debug.LogError("Failed to find relay join code in lobby data");
+                return false;
+            }
         }
-        catch (LobbyServiceException e)
+        catch (Exception e)
         {
-            Debug.LogError($"Failed to join lobby: {e.Message}");
+            Debug.LogError($"Failed to join lobby with relay: {e.Message}");
             return false;
         }
     }
+
     // Joining lobby via code input
     public async Task<bool> JoinLobbyByCode(string lobbyCode)
     {

@@ -2,7 +2,7 @@ using UnityEngine;
 using System;
 using System.IO;
 
-public class BuildLogger : MonoBehaviour
+public class LogManager : MonoBehaviour
 {
     private string logPath;
     
