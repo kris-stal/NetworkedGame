@@ -9,6 +9,8 @@ using Unity.Netcode;
 using System.Net;
 using System.Net.Sockets;
 using Unity.Netcode.Transports.UTP;
+using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
 
 public class LobbyManager : MonoBehaviour
 {
@@ -20,7 +22,7 @@ public class LobbyManager : MonoBehaviour
     private float heartbeatTimer;
     private float lobbyUpdateTimer;
     private string playerName;
-    private Lobby currentLobby;
+    
 
 
     // Constants
@@ -70,12 +72,23 @@ public class LobbyManager : MonoBehaviour
         // Initialize timers
         heartbeatTimer = 15f;
         lobbyUpdateTimer = 3f;
+        
     }
 
     private void Start()
     {
         // Subscribe to events
         OnJoinedLobby += HandleJoinedLobby;
+
+        NetworkManager.Singleton.OnClientConnectedCallback += (clientId) =>
+        {
+            Debug.Log($"Successfully connected to host as Client-{clientId}");
+        };
+
+        NetworkManager.Singleton.OnClientDisconnectCallback += (clientId) =>
+        {
+            Debug.LogError($"Disconnected from host. Client ID: {clientId}");
+        };
     }
 
     private void Update()
@@ -147,74 +160,125 @@ public class LobbyManager : MonoBehaviour
         return false;
     }
 
+
     // Get local IP address
-    private string GetLocalIPAddress()
+    public string GetLocalIPAddress()
     {
-        try 
+        var host = Dns.GetHostEntry(Dns.GetHostName());
+        foreach (var ip in host.AddressList)
         {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            foreach (var ip in host.AddressList)
+            if (ip.AddressFamily == AddressFamily.InterNetwork && !ip.ToString().StartsWith("127."))
             {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    return ip.ToString();
-                }
+                return ip.ToString(); // Returns the first valid LAN IP
             }
-            return "127.0.0.1"; // Fallback to localhost
         }
-        catch
-        {
-            return "127.0.0.1";
-        }
+        
+        throw new Exception("No valid local IP found.");
     }
 
     // Get current port from NetworkManager
     private int GetCurrentPort()
     {
         var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        return transport != null ? transport.ConnectionData.Port : 7777; // Default port
+        return transport != null ? transport.ConnectionData.Port : 7778; // Default port is 7777, trying 7778
     }
 
     // Creating the lobby
-    public async Task<bool> CreateLobby()
+    // public async Task<bool> CreateLobby()
+    // {
+    //     try
+    //     {
+    //         string lobbyName = playerName + "'s Lobby";
+    //         int maxPlayers = 4;
+
+    //         // Get host's IP and Port
+    //         string hostIP = GetLocalIPAddress();
+    //         int hostPort = GetCurrentPort();
+
+    //         CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
+    //         {
+    //             IsPrivate = false,
+    //             Player = GetPlayer(),
+    //             Data = new Dictionary<string, DataObject>
+    //             {
+    //                 // Store host connection details in lobby metadata
+    //                 { "HostIP", new DataObject(DataObject.VisibilityOptions.Public, hostIP) },
+    //                 { "HostPort", new DataObject(DataObject.VisibilityOptions.Public, hostPort.ToString()) }
+    //             }
+    //         };
+
+    //         Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
+    //         hostLobby = lobby;
+    //         joinedLobby = lobby;
+
+    //         // Output lobby details
+    //         Debug.Log("Created lobby! " + lobby.Name + " " + lobby.MaxPlayers + " " + lobby.Id + " " + lobby.LobbyCode);
+    //         Debug.Log($"Lobby Host IP: {hostIP}, Port: {hostPort} ");
+
+    //         // Output players
+    //         PrintPlayers(hostLobby);
+    
+    //         // save this lobby as last joined lobby
+    //         PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
+    //         PlayerPrefs.Save();
+
+    //         // Start hosting through NetworkManager
+    //         if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+    //         {
+    //             bool success = NetworkManager.Singleton.StartHost();
+    //             if (!success)
+    //             {
+    //                 Debug.LogError("Failed to start as host!");
+    //                 return false;
+    //             }
+    //             Debug.Log("Started as network host");
+    //         }
+            
+    //         return true;
+    //     }
+    //     catch (LobbyServiceException e)
+    //     {
+    //         Debug.Log(e);
+    //         return false;
+    //     }
+    // }
+
+    public async Task<bool> CreateLobbyWithRelay()
     {
         try
         {
             string lobbyName = playerName + "'s Lobby";
             int maxPlayers = 4;
 
-            // Get host's IP and Port
-            string hostIP = GetLocalIPAddress();
-            int hostPort = GetCurrentPort();
+            // Allocate a relay server for the host
+            var allocation = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
 
+            // Get the Relay server's endpoint (Host and Port)
+            var relayServerEndpoint = allocation.ServerEndpoints[0]; // Typically only one endpoint for Relay
+
+            string hostIP = relayServerEndpoint.Host; // Get the Relay Host (IP address or hostname)
+            int hostPort = relayServerEndpoint.Port; // Get the Relay Port
+
+            Debug.Log($"Host IP: {hostIP}, Port: {hostPort}");
+
+            // Save the Relay information to the lobby's metadata
             CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
             {
                 IsPrivate = false,
                 Player = GetPlayer(),
                 Data = new Dictionary<string, DataObject>
                 {
-                    // Store host connection details in lobby metadata
                     { "HostIP", new DataObject(DataObject.VisibilityOptions.Public, hostIP) },
                     { "HostPort", new DataObject(DataObject.VisibilityOptions.Public, hostPort.ToString()) }
                 }
             };
 
+            // Create the lobby
             Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
             hostLobby = lobby;
             joinedLobby = lobby;
 
-            // Output lobby details
-            Debug.Log("Created lobby! " + lobby.Name + " " + lobby.MaxPlayers + " " + lobby.Id + " " + lobby.LobbyCode);
-            Debug.Log($"Lobby Host IP: {hostIP}, Port: {hostPort} ");
-
-            // Output players
-            PrintPlayers(hostLobby);
-    
-            // save this lobby as last joined lobby
-            PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
-            PlayerPrefs.Save();
-
-            // Start hosting through NetworkManager
+            // Start hosting through NetworkManager (with relay connection data)
             if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
             {
                 bool success = NetworkManager.Singleton.StartHost();
@@ -225,12 +289,12 @@ public class LobbyManager : MonoBehaviour
                 }
                 Debug.Log("Started as network host");
             }
-            
+
             return true;
         }
         catch (LobbyServiceException e)
         {
-            Debug.Log(e);
+            Debug.LogError($"Error creating lobby: {e.Message}");
             return false;
         }
     }
@@ -273,26 +337,99 @@ public class LobbyManager : MonoBehaviour
     }
 
     // Method to join a lobby by ID (from searching lobbies)
-    public async Task<bool> JoinLobbyById(string lobbyId)
+    // public async Task<bool> JoinLobbyById(string lobbyId)
+    // {
+    //     try
+    //     {
+    //         // Make sure player is authenticated
+    //         if (!AuthenticationService.Instance.IsSignedIn)
+    //         {
+    //             Debug.LogError("Player is not signed in");
+    //             return false;
+    //         }
+            
+    //         // Join the lobby
+    //         JoinLobbyByIdOptions options = new JoinLobbyByIdOptions
+    //         {
+    //             Player = GetPlayer()
+    //         };
+            
+    //         joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, options);
+
+    //         // Retrieve host connection details from lobby metadata
+    //         if (joinedLobby.Data.TryGetValue("HostIP", out DataObject hostIPData) &&
+    //             joinedLobby.Data.TryGetValue("HostPort", out DataObject hostPortData))
+    //         {
+    //             string hostIP = hostIPData.Value;
+    //             int hostPort = int.Parse(hostPortData.Value);
+
+    //             Debug.Log($"Joining lobby with Host IP: {hostIP}, Port: {hostPort}");
+
+    //             // Configure NetworkManager to connect to host IP and port
+    //             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+    //             if (transport != null)
+    //             {
+    //                 transport.SetConnectionData(hostIP, (ushort)hostPort);  // ✅ Use hostIP from lobby!
+    //                 Debug.Log($"Client connecting to: {hostIP}:{hostPort}");
+    //             }
+    //         }
+
+
+    //         // Start as client
+    //         if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+    //         {
+    //             bool success = NetworkManager.Singleton.StartClient();
+    //             if (!success)
+    //             {
+    //                 Debug.LogError("Failed to start as client!");
+    //                 return false;
+    //             }
+
+    //             // Retry logic if client connection fails
+    //             if (!NetworkManager.Singleton.IsConnectedClient)
+    //             {
+    //                 Debug.LogError("Client connection failed. Retrying...");
+    //                 NetworkManager.Singleton.Shutdown();
+    //                 await Task.Delay(1000);  // Small delay before retrying
+    //                 NetworkManager.Singleton.StartClient();
+    //             }
+
+    //             Debug.Log("Started as network client");
+    //         }
+    //         return true;
+    //     }
+    //     catch (LobbyServiceException e)
+    //     {
+    //         Debug.LogError($"Failed to join lobby: {e.Message}");
+    //         return false;
+    //     }
+    // }
+    public async Task<bool> JoinLobbyByIdWithRelay(string lobbyId, string playerName)
     {
         try
         {
-            // Make sure player is authenticated
-            if (!AuthenticationService.Instance.IsSignedIn)
+            // Define player metadata
+            var playerData = new Dictionary<string, PlayerDataObject>
             {
-                Debug.LogError("Player is not signed in");
-                return false;
-            }
-            
-            // Join the lobby
-            JoinLobbyByIdOptions options = new JoinLobbyByIdOptions
-            {
-                Player = GetPlayer()
+                { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Public, playerName) }
             };
-            
-            joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, options);
 
-            // Retrieve host connection details from lobby metadata
+            // Join the lobby with player metadata
+            var joinOptions = new JoinLobbyByIdOptions
+            {
+                Player = new Player
+                {
+                    Data = playerData
+                }
+            };
+
+            // Attempt to join the lobby
+            Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, joinOptions);
+            this.joinedLobby = joinedLobby;
+
+            Debug.Log($"Successfully joined lobby as {playerName}");
+
+            // Retrieve the Relay server details from the lobby metadata
             if (joinedLobby.Data.TryGetValue("HostIP", out DataObject hostIPData) &&
                 joinedLobby.Data.TryGetValue("HostPort", out DataObject hostPortData))
             {
@@ -301,26 +438,27 @@ public class LobbyManager : MonoBehaviour
 
                 Debug.Log($"Joining lobby with Host IP: {hostIP}, Port: {hostPort}");
 
-                // Configure NetworkManager to connect to host IP and port
+                // Configure NetworkManager with the relay server details
                 var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
                 if (transport != null)
                 {
                     transport.SetConnectionData(hostIP, (ushort)hostPort);
+                    Debug.Log($"Client connecting to: {hostIP}:{hostPort}");
                 }
-            }
 
-
-            // Start as client
-            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
-            {
-                bool success = NetworkManager.Singleton.StartClient();
-                if (!success)
+                // Start the client
+                if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
                 {
-                    Debug.LogError("Failed to start as client!");
-                    return false;
+                    bool success = NetworkManager.Singleton.StartClient();
+                    if (!success)
+                    {
+                        Debug.LogError("Failed to start as client!");
+                        return false;
+                    }
+                    Debug.Log("Started as network client");
                 }
-                Debug.Log("Started as network client");
             }
+
             return true;
         }
         catch (LobbyServiceException e)
@@ -329,7 +467,6 @@ public class LobbyManager : MonoBehaviour
             return false;
         }
     }
-
     // Joining lobby via code input
     public async Task<bool> JoinLobbyByCode(string lobbyCode)
     {
@@ -366,7 +503,8 @@ public class LobbyManager : MonoBehaviour
                 var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
                 if (transport != null)
                 {
-                    transport.SetConnectionData(hostIP, (ushort)hostPort);
+                    transport.SetConnectionData(hostIP, (ushort)hostPort);  // ✅ Use hostIP from lobby!
+                    Debug.Log($"Client connecting to: {hostIP}:{hostPort}");
                 }
             }
 
@@ -509,16 +647,43 @@ public class LobbyManager : MonoBehaviour
     public List<string> GetPlayerNames()
     {
         List<string> names = new List<string>();
-        Lobby currentLobby = hostLobby != null ? hostLobby : joinedLobby;
-        
-        if (currentLobby != null)
+        Lobby currentLobby = hostLobby ?? joinedLobby;
+
+        if (currentLobby == null)
         {
-            foreach (Player player in currentLobby.Players)
-            {
-                names.Add(player.Data["PlayerName"].Value);
-            }
+            Debug.LogWarning("GetPlayerNames: No active lobby found.");
+            return names;
         }
-        
+
+        if (currentLobby.Players == null)
+        {
+            Debug.LogWarning("GetPlayerNames: Lobby exists but Players list is null.");
+            return names;
+        }
+
+    foreach (Player player in currentLobby.Players)
+    {
+        if (player == null)
+        {
+            Debug.LogWarning("GetPlayerNames: Found a null player in the lobby.");
+            continue;
+        }
+
+        if (player.Data == null)
+        {
+            Debug.LogWarning($"GetPlayerNames: Player {player.Id} has null Data.");
+            continue;
+        }
+
+        if (!player.Data.ContainsKey("PlayerName"))
+        {
+            Debug.LogWarning($"GetPlayerNames: Player {player.Id} is missing PlayerName data.");
+            continue;
+        }
+
+        names.Add(player.Data["PlayerName"].Value);
+    }
+
         return names;
     }
 

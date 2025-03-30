@@ -52,6 +52,7 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI playerCountText;
     [SerializeField] private Transform playerListContent;
     [SerializeField] private GameObject playerListItemPrefab;
+    
 
     private string playerName;
 
@@ -116,6 +117,7 @@ public class MenuUIManager : MonoBehaviour
         {
             Debug.LogError("Unity Services not initialized");
         }
+
 
 
         // Set up button listeners
@@ -195,7 +197,7 @@ public class MenuUIManager : MonoBehaviour
     private async void OnJoinLobbyClicked(string lobbyId)
     {
         // Call join lobby method from your lobby manager
-        bool success = await lobbyManagerInstance.JoinLobbyById(lobbyId);
+        bool success = await lobbyManagerInstance.JoinLobbyByIdWithRelay(lobbyId, playerName);
         
         if (!success)
         {
@@ -294,7 +296,7 @@ public class MenuUIManager : MonoBehaviour
             return;
         }
 
-        bool created = await lobbyManagerInstance.CreateLobby();
+        bool created = await lobbyManagerInstance.CreateLobbyWithRelay();
         
         if (created)
         {
@@ -387,8 +389,6 @@ public class MenuUIManager : MonoBehaviour
     private void UpdateLobbyUI()
     {
         if (!lobbyUI.activeSelf || menuManagerInstance == null || lobbyManagerInstance == null) return;
-
-        Debug.Log("Is Host: " + lobbyManagerInstance.IsHost);  // Debug to check if host status is correct
 
         // Update lobby info
         lobbyNameText.text = "Lobby: " + lobbyManagerInstance.LobbyName;

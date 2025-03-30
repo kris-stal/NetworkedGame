@@ -10,6 +10,7 @@ Library: C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
 --temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
+--debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
 --decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
 --output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
@@ -72,6 +73,7 @@ Library: C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
 --temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
+--debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
 --decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
 --output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
@@ -136,6 +138,7 @@ Library: C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
 --temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
+--debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
 --decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
 --output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
@@ -156,6 +159,7 @@ Library: C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
 --temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
+--debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
 --decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
 --output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
@@ -174,6 +178,7 @@ Library: C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
 --temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
+--debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
 --decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
 --output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
@@ -290,6 +295,7 @@ Library: C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
 --temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
+--debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
 --decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
 --output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated

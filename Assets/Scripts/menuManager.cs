@@ -99,14 +99,27 @@ public class MenuManager : MonoBehaviour
     {
         if (lobbyManagerInstance.IsHost)
         {
+            // Ensure that the host has connected clients before starting the game
+            if (NetworkManager.Singleton.ConnectedClients.Count == 0)
+            {
+                Debug.LogError("No clients connected. Cannot start the game.");
+                return; // Prevent starting the game if no clients are connected
+            }
+
             Debug.Log("Starting game as host");
-            
-            // Make sure NetworkManager is already set up
+
             if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost)
             {
-                // Load the game scene
-                NetworkManager.Singleton.SceneManager.LoadScene("BallArena", LoadSceneMode.Single);
-                Debug.Log("Loading scene: BallArena");
+                Debug.Log($"Connected clients: {NetworkManager.Singleton.ConnectedClientsIds.Count}");
+                foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
+                {
+                    if (clientId != 0)
+                    {
+                        Debug.Log($"Client connected: {clientId}");
+                    }
+                }
+
+                StartGameServerRpc();
             }
             else
             {
@@ -117,6 +130,15 @@ public class MenuManager : MonoBehaviour
         {
             Debug.LogError("Cannot start game: not a host");
         }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void StartGameServerRpc()
+    {
+        if (!NetworkManager.Singleton.IsHost) return;  // Only the host can load the scene
+
+        Debug.Log("Host is loading BallArena scene...");
+        NetworkManager.Singleton.SceneManager.LoadScene("BallArena", LoadSceneMode.Single);
     }
 
     public void StartStressTest()

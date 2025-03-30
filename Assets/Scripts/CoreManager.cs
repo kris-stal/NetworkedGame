@@ -62,7 +62,8 @@ public class CoreManager : MonoBehaviour
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     { 
-
+        // Ensure networkmanager's scene management is active.
+        NetworkManager.Singleton.NetworkConfig.EnableSceneManagement = true;
 
     }
 
