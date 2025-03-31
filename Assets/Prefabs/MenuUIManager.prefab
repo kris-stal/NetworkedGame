@@ -59,6 +59,7 @@ MonoBehaviour:
   playerNameInput: {fileID: 6718002219212454116}
   signInButton: {fileID: 6162730078473473668}
   mainMenuUI: {fileID: 2006223088302233822}
+  usernameText: {fileID: 0}
   codeInputBox: {fileID: 5099956248405885937}
   createLobbyButton: {fileID: 1339805506130642653}
   joinLobbyWithCodeButton: {fileID: 3447174645951550227}
@@ -1494,7 +1495,6 @@ GameObject:
   - component: {fileID: 2623087861376232936}
   - component: {fileID: 1571396890931617099}
   - component: {fileID: 1260448660038613962}
-  - component: {fileID: 3445381914017939372}
   m_Layer: 5
   m_Name: LobbyListPanel
   m_TagString: Untagged
@@ -1560,36 +1560,6 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!114 &3445381914017939372
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3289003328452505942}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1aa08ab6e0800fa44ae55d278d1423e3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_Content: {fileID: 0}
-  m_Horizontal: 1
-  m_Vertical: 1
-  m_MovementType: 1
-  m_Elasticity: 0.1
-  m_Inertia: 1
-  m_DecelerationRate: 0.135
-  m_ScrollSensitivity: 1
-  m_Viewport: {fileID: 0}
-  m_HorizontalScrollbar: {fileID: 0}
-  m_VerticalScrollbar: {fileID: 0}
-  m_HorizontalScrollbarVisibility: 0
-  m_VerticalScrollbarVisibility: 0
-  m_HorizontalScrollbarSpacing: 0
-  m_VerticalScrollbarSpacing: 0
-  m_OnValueChanged:
-    m_PersistentCalls:
-      m_Calls: []
 --- !u!1 &4147613551089332887
 GameObject:
   m_ObjectHideFlags: 0
