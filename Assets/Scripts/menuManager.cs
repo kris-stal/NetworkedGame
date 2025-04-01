@@ -43,24 +43,6 @@ public class MenuManager : MonoBehaviour
         menuUIManagerInstance = coreManagerInstance.menuUIManagerInstance;
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
 
-        // Move to an event?
-        // bool isUnityInitialized = await coreManagerInstance.InitializeUnityServices();
-
-        //     if (isUnityInitialized)
-        //     {
-        //         if (AuthenticationService.Instance.IsSignedIn)
-        //         {
-        //             Debug.Log("User already signed in, skipping sign-in screen.");
-        //             menuUIManagerInstance.ShowMainMenuScreen();
-        //             return;
-        //         }
-        //     }
-        //     else
-        //     {
-        //         Debug.LogError("Unity Services failed, cannot proceed!");
-        //         // Handle failure (show error message, retry, etc.)
-        //     }
-
         // Always show sign-in screen first
         menuUIManagerInstance.ShowSigninScreen();
         

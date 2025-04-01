@@ -24,23 +24,22 @@ public class LobbyManager : MonoBehaviour
     private float lobbyUpdateTimer;
     private string playerName;
     
-
-
     // Constants
     private const float lobbyUpdateTimerMax = 2f;
     
-    // Public properties
+    // Public variables
     public Lobby HostLobby => hostLobby;
     public Lobby JoinedLobby => joinedLobby;
     public string LobbyName => (hostLobby != null) ? hostLobby.Name : (joinedLobby != null) ? joinedLobby.Name : "";
     public string LobbyCode => (hostLobby != null) ? hostLobby.LobbyCode : (joinedLobby != null) ? joinedLobby.LobbyCode : "";
     public bool IsHost => hostLobby != null;
 
+    // Dictionary
     public Dictionary<string, float> playerPings = new Dictionary<string, float>();
     public Dictionary<string, ulong> playerClientIds = new Dictionary<string, ulong>(); 
 
-
-    public event EventHandler OnLeftLobby;
+    // Events
+    public event EventHandler<LobbyEventArgs> OnLeftLobby;
     public event EventHandler<LobbyEventArgs> OnJoinedLobby;
     public event EventHandler<LobbyEventArgs> OnJoinedLobbyUpdate;
     public event EventHandler<LobbyEventArgs> OnKickedFromLobby;
@@ -56,6 +55,7 @@ public class LobbyManager : MonoBehaviour
     }
 
 
+    // Awake is called first, before start
     private void Awake()
     {
         // If theres an instance already which is not this one
@@ -73,7 +73,6 @@ public class LobbyManager : MonoBehaviour
         // Initialize timers
         heartbeatTimer = 15f;
         lobbyUpdateTimer = 3f;
-        
     }
 
     private void Start()
@@ -81,14 +80,37 @@ public class LobbyManager : MonoBehaviour
         // Subscribe to events
         OnJoinedLobby += HandleJoinedLobby;
 
-        NetworkManager.Singleton.OnClientConnectedCallback += (clientId) =>
-        {
-            Debug.Log($"Successfully connected to host as Client-{clientId}");
-        };
+    NetworkManager.Singleton.OnClientConnectedCallback += (clientId) =>
+    {
+        Debug.Log($"Successfully connected to host as Client-{clientId}");
 
-        NetworkManager.Singleton.OnClientDisconnectCallback += (clientId) =>
+        // For local client connection
+        if (clientId == NetworkManager.Singleton.LocalClientId)
+        {
+            string localPlayerId = AuthenticationService.Instance.PlayerId;
+            
+            // Register player with both IDs
+            RegisterPlayer(localPlayerId, clientId);
+            
+            // If client (not host), inform the host about our mapping
+            if (!IsHost)
+            {
+                NotifyHostAboutPlayerMapping_ServerRpc(localPlayerId);
+            }
+        }
+        else if (IsHost)
+        {
+            // Remote client connected to host - we'll register them
+            // once they identify themselves via RPC
+            Debug.Log($"Remote client {clientId} connected to host, awaiting player identification");
+        }
+    };
+
+    NetworkManager.Singleton.OnClientDisconnectCallback += (clientId) =>
         {
             Debug.LogError($"Disconnected from host. Client ID: {clientId}");
+
+            UnRegisterPlayer(clientId);
         };
     }
 
@@ -147,6 +169,7 @@ public class LobbyManager : MonoBehaviour
             }
         }
     }
+
     
     // Check if player in lobby (true)
     private bool IsPlayerInLobby() {
@@ -160,89 +183,6 @@ public class LobbyManager : MonoBehaviour
         }
         return false;
     }
-
-
-    // Get local IP address
-    public string GetLocalIPAddress()
-    {
-        var host = Dns.GetHostEntry(Dns.GetHostName());
-        foreach (var ip in host.AddressList)
-        {
-            if (ip.AddressFamily == AddressFamily.InterNetwork && !ip.ToString().StartsWith("127."))
-            {
-                return ip.ToString(); // Returns the first valid LAN IP
-            }
-        }
-        
-        throw new Exception("No valid local IP found.");
-    }
-
-    // Get current port from NetworkManager
-    private int GetCurrentPort()
-    {
-        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        return transport != null ? transport.ConnectionData.Port : 7777; // Default port is 7777, trying 7778
-    }
-
-    // Creating the lobby
-    // public async Task<bool> CreateLobby()
-    // {
-    //     try
-    //     {
-    //         string lobbyName = playerName + "'s Lobby";
-    //         int maxPlayers = 4;
-
-    //         // Get host's IP and Port
-    //         string hostIP = GetLocalIPAddress();
-    //         int hostPort = GetCurrentPort();
-
-    //         CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
-    //         {
-    //             IsPrivate = false,
-    //             Player = GetPlayer(),
-    //             Data = new Dictionary<string, DataObject>
-    //             {
-    //                 // Store host connection details in lobby metadata
-    //                 { "HostIP", new DataObject(DataObject.VisibilityOptions.Public, hostIP) },
-    //                 { "HostPort", new DataObject(DataObject.VisibilityOptions.Public, hostPort.ToString()) }
-    //             }
-    //         };
-
-    //         Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
-    //         hostLobby = lobby;
-    //         joinedLobby = lobby;
-
-    //         // Output lobby details
-    //         Debug.Log("Created lobby! " + lobby.Name + " " + lobby.MaxPlayers + " " + lobby.Id + " " + lobby.LobbyCode);
-    //         Debug.Log($"Lobby Host IP: {hostIP}, Port: {hostPort} ");
-
-    //         // Output players
-    //         PrintPlayers(hostLobby);
-    
-    //         // save this lobby as last joined lobby
-    //         PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
-    //         PlayerPrefs.Save();
-
-    //         // Start hosting through NetworkManager
-    //         if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
-    //         {
-    //             bool success = NetworkManager.Singleton.StartHost();
-    //             if (!success)
-    //             {
-    //                 Debug.LogError("Failed to start as host!");
-    //                 return false;
-    //             }
-    //             Debug.Log("Started as network host");
-    //         }
-            
-    //         return true;
-    //     }
-    //     catch (LobbyServiceException e)
-    //     {
-    //         Debug.Log(e);
-    //         return false;
-    //     }
-    // }
 
     public async Task<bool> CreateLobbyWithRelay()
     {
@@ -351,74 +291,6 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
-    // Method to join a lobby by ID (from searching lobbies)
-    // public async Task<bool> JoinLobbyById(string lobbyId)
-    // {
-    //     try
-    //     {
-    //         // Make sure player is authenticated
-    //         if (!AuthenticationService.Instance.IsSignedIn)
-    //         {
-    //             Debug.LogError("Player is not signed in");
-    //             return false;
-    //         }
-            
-    //         // Join the lobby
-    //         JoinLobbyByIdOptions options = new JoinLobbyByIdOptions
-    //         {
-    //             Player = GetPlayer()
-    //         };
-            
-    //         joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, options);
-
-    //         // Retrieve host connection details from lobby metadata
-    //         if (joinedLobby.Data.TryGetValue("HostIP", out DataObject hostIPData) &&
-    //             joinedLobby.Data.TryGetValue("HostPort", out DataObject hostPortData))
-    //         {
-    //             string hostIP = hostIPData.Value;
-    //             int hostPort = int.Parse(hostPortData.Value);
-
-    //             Debug.Log($"Joining lobby with Host IP: {hostIP}, Port: {hostPort}");
-
-    //             // Configure NetworkManager to connect to host IP and port
-    //             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-    //             if (transport != null)
-    //             {
-    //                 transport.SetConnectionData(hostIP, (ushort)hostPort);  // ✅ Use hostIP from lobby!
-    //                 Debug.Log($"Client connecting to: {hostIP}:{hostPort}");
-    //             }
-    //         }
-
-
-    //         // Start as client
-    //         if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
-    //         {
-    //             bool success = NetworkManager.Singleton.StartClient();
-    //             if (!success)
-    //             {
-    //                 Debug.LogError("Failed to start as client!");
-    //                 return false;
-    //             }
-
-    //             // Retry logic if client connection fails
-    //             if (!NetworkManager.Singleton.IsConnectedClient)
-    //             {
-    //                 Debug.LogError("Client connection failed. Retrying...");
-    //                 NetworkManager.Singleton.Shutdown();
-    //                 await Task.Delay(1000);  // Small delay before retrying
-    //                 NetworkManager.Singleton.StartClient();
-    //             }
-
-    //             Debug.Log("Started as network client");
-    //         }
-    //         return true;
-    //     }
-    //     catch (LobbyServiceException e)
-    //     {
-    //         Debug.LogError($"Failed to join lobby: {e.Message}");
-    //         return false;
-    //     }
-    // }
     public async Task<bool> JoinLobbyByIdWithRelay(string lobbyId, string playerName)
     {
         try
@@ -557,8 +429,12 @@ public class LobbyManager : MonoBehaviour
     private void HandleJoinedLobby(object sender, LobbyEventArgs e)
     {
         Debug.Log($"Player joined lobby: {e.PlayerName}");
-
+        
+        // Register the player at lobby level (ping tracking only, no client ID yet)
         RegisterPlayer(e.PlayerId);
+        
+        // Note: We deliberately don't map client IDs here, as the network
+        // connection might not be established yet
     }
 
     // Get player data
@@ -571,19 +447,6 @@ public class LobbyManager : MonoBehaviour
                 { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, playerName)}
             }
         };
-    }
-
-    // Output players for currently joined lobby
-    public void PrintPlayers()  
-    {
-        if (hostLobby != null)
-        {
-            PrintPlayers(hostLobby);
-        }
-        else if (joinedLobby != null)
-        {
-            PrintPlayers(joinedLobby);
-        }
     }
 
     // Output players in a specific lobby
@@ -603,6 +466,8 @@ public class LobbyManager : MonoBehaviour
         {
             if (joinedLobby != null)
             {
+                string playerId = AuthenticationService.Instance.PlayerId;
+
                 if (IsHost) 
                 {
                     await DeleteLobby(); // If host, delete lobby before leaving
@@ -613,6 +478,10 @@ public class LobbyManager : MonoBehaviour
                     Debug.Log("Left lobby: " + joinedLobby.Name);
                 }
 
+                playerPings.Remove(playerId);
+                playerClientIds.Remove(playerId);
+                Debug.Log($"Removed player {playerId} from mappings");
+
                 joinedLobby = null;
                 hostLobby = null;
 
@@ -622,15 +491,6 @@ public class LobbyManager : MonoBehaviour
                     NetworkManager.Singleton.Shutdown();
                     Debug.Log("Network shutdown");
                 }
-
-                // try 
-                // {
-                //     AuthenticationService.Instance.SignOut();
-                // }
-                // catch (System.Exception e)
-                // {
-                //     Debug.LogError($"Error signing out: {e.Message}");
-                // }
                 
                 return true;
             }
@@ -745,29 +605,102 @@ public class LobbyManager : MonoBehaviour
     // After game starts, map player IDs to client IDs
     public void MapPlayerIdToClientId(string playerId, ulong clientId)
     {
+        // Remove any existing mappings for this client ID
+        string existingPlayerId = GetPlayerIdByClientId(clientId);
+        if (existingPlayerId != null && existingPlayerId != playerId)
+        {
+            playerClientIds.Remove(existingPlayerId);
+            Debug.Log($"Removed existing mapping for ClientId {clientId}");
+        }
+        
+        // Update or add the new mapping
         playerClientIds[playerId] = clientId;
+        Debug.Log($"Mapped PlayerID: {playerId} -> ClientID: {clientId}");
     }
 
-    // Get ping by client ID (used in game)
-    public float GetPlayerPingByClientId(ulong clientId)
+    public string GetPlayerIdByClientId(ulong clientId)
     {
         foreach (var kvp in playerClientIds)
         {
             if (kvp.Value == clientId)
             {
-                return GetPlayerPing(kvp.Key);
+                return kvp.Key;
             }
         }
-        return 0f;
+        return null;
+    }
+
+    // Get ping by client ID (used in game)
+    public string GetPlayerPingByClientId(ulong clientId)
+    {
+        foreach (var kvp in playerClientIds)
+        {
+            if (kvp.Value == clientId)
+            {
+                return kvp.Key;
+            }
+        }
+        return null;
     }
 
     // Call this when players join lobby
-    public void RegisterPlayer(string playerId, ulong clientId = 0)
+    public void RegisterPlayer(string playerId = null, ulong clientId = 0)
     {
-        playerPings[playerId] = 0;
+        // Default to local player if no ID provided
+        if (string.IsNullOrEmpty(playerId))
+        {
+            playerId = AuthenticationService.Instance.PlayerId;
+        }
+        
+        // Track ping for this player if not already tracked
+        if (!playerPings.ContainsKey(playerId))
+        {
+            playerPings[playerId] = 0;
+            Debug.Log($"Added player {playerId} to ping tracking");
+        }
+        
+        // Map client ID if provided and valid
         if (clientId != 0)
         {
-            playerClientIds[playerId] = clientId;
+            MapPlayerIdToClientId(playerId, clientId);
         }
+    }
+
+    public void UnRegisterPlayer(ulong clientId)
+    {
+        string playerId = GetPlayerIdByClientId(clientId);
+        if (playerId != null)
+        {
+            playerPings.Remove(playerId);
+            playerClientIds.Remove(playerId);
+            Debug.Log($"Unregistered player {playerId} with ClientId {clientId}");
+        }
+    }
+
+    // In LobbyManager class
+    [ServerRpc(RequireOwnership = false)]
+    private void NotifyHostAboutPlayerMapping_ServerRpc(string playerId, ServerRpcParams rpcParams = default)
+    {
+        // Get the sender's client ID from RPC parameters
+        ulong sendingClientId = rpcParams.Receive.SenderClientId;
+        
+        // Map this player ID to the client ID on the server
+        MapPlayerIdToClientId(playerId, sendingClientId);
+        Debug.Log($"Host received player mapping: PlayerID: {playerId} -> ClientID: {sendingClientId}");
+        
+        // Broadcast this mapping to all clients
+        NotifyAllClientsAboutMapping_ClientRpc(playerId, sendingClientId);
+    }
+
+    // Broadcast the mapping to all clients
+    [ClientRpc]
+    private void NotifyAllClientsAboutMapping_ClientRpc(string playerId, ulong clientId)
+    {
+        // Skip if we're the host since we already have this mapping
+        if (IsHost) return;
+        
+        // Add the mapping on all clients
+        MapPlayerIdToClientId(playerId, clientId);
+        Debug.Log($"Client received player mapping: PlayerID: {playerId} -> ClientID: {clientId}");
     }
 }
