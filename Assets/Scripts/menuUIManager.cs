@@ -52,6 +52,7 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI playerCountText;
     [SerializeField] private Transform playerListContent;
     [SerializeField] private GameObject playerListItemPrefab;
+    private List<GameObject> instantiatedPlayerItems = new List<GameObject>();
     
 
     private string playerName;
@@ -184,7 +185,42 @@ public class MenuUIManager : MonoBehaviour
             instantiatedLobbyItems.Add(lobbyItem);
         }
     }
-    
+
+    private GameObject CreatePlayerListItem(Player player)
+    {
+        // Instantiate the player list item prefab
+        GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
+        
+        // Get the player name from data
+        string playerName = "Unknown";
+        if (player.Data.ContainsKey("PlayerName") && player.Data["PlayerName"] != null)
+        {
+            playerName = player.Data["PlayerName"].Value;
+        }
+        
+        // Get the player's ID
+        string playerId = player.Id;
+        
+        // Get client ID for this player if available
+        ulong clientId = 0;
+        if (lobbyManagerInstance.playerClientIds.TryGetValue(playerId, out ulong id))
+        {
+            clientId = id;
+        }
+        
+        // Initialize the player list item component
+        PlayerListItem item = playerItem.GetComponent<PlayerListItem>();
+        if (item != null)
+        {
+            item.Initialize(playerName, playerId, clientId);
+        }
+        
+        // Add to our list for cleanup later
+        instantiatedPlayerItems.Add(playerItem);
+        
+        return playerItem;
+    }
+
     private void ClearLobbyList()
     {
         foreach (GameObject item in instantiatedLobbyItems)
@@ -405,22 +441,89 @@ public class MenuUIManager : MonoBehaviour
 
     private void UpdatePlayerList()
     {
-        if (menuManagerInstance == null || lobbyManagerInstance == null ) return;
+        Debug.Log("Current lobby players:");
+
+        if (menuManagerInstance == null || lobbyManagerInstance == null) 
+        {
+            Debug.LogWarning("UpdatePlayerList: Missing manager instances");
+            return;
+        }
+
+        Lobby currentLobby = lobbyManagerInstance.HostLobby ?? lobbyManagerInstance.JoinedLobby;
+        if (currentLobby != null && currentLobby.Players != null)
+        {
+            foreach (var player in currentLobby.Players)
+            {
+                string playerName = player.Data.ContainsKey("PlayerName") ? player.Data["PlayerName"].Value : "Unknown";
+                Debug.Log($"  Player ID: {player.Id}, Name: {playerName}");
+            }
+        }
+
+        // Log before clearing
+        Debug.Log($"UpdatePlayerList: Clearing {instantiatedPlayerItems.Count} existing player items");
+        
+        // Get current lobby
+        if (currentLobby == null)
+        {
+            Debug.LogWarning("UpdatePlayerList: No active lobby found");
+            return;
+        }
+        
+        if (currentLobby.Players == null)
+        {
+            Debug.LogWarning("UpdatePlayerList: Lobby Players list is null");
+            return;
+        }
+        
+        Debug.Log($"UpdatePlayerList: Found {currentLobby.Players.Count} players in lobby {currentLobby.Name}");
 
         // Clear current player list
-        foreach (Transform child in playerListContent)
+        foreach (GameObject item in instantiatedPlayerItems)
         {
-            Destroy(child.gameObject);
+            Destroy(item);
+        }
+        instantiatedPlayerItems.Clear();
+        
+        // Track processed player IDs to avoid duplicates
+        HashSet<string> processedPlayerIds = new HashSet<string>();
+        
+        // Populate player list with actual Player objects
+        foreach (Player player in currentLobby.Players)
+        {
+            if (player == null)
+            {
+                Debug.LogWarning("UpdatePlayerList: Found null player entry");
+                continue;
+            }
+            
+            if (string.IsNullOrEmpty(player.Id))
+            {
+                Debug.LogWarning("UpdatePlayerList: Found player with null/empty ID");
+                continue;
+            }
+            
+            // Skip if we've already processed this player
+            if (processedPlayerIds.Contains(player.Id))
+            {
+                Debug.LogWarning($"UpdatePlayerList: Skipping duplicate player {player.Id}");
+                continue;
+            }
+                
+            processedPlayerIds.Add(player.Id);
+            
+            // Debug output before creating UI element
+            if (player.Data != null && player.Data.ContainsKey("PlayerName"))
+            {
+                Debug.Log($"Creating UI for player: {player.Id} - {player.Data["PlayerName"].Value}");
+            }
+            else
+            {
+                Debug.LogWarning($"Player {player.Id} is missing name data");
+            }
+            
+            CreatePlayerListItem(player);
         }
         
-        // Get player names
-        List<string> playerNames = lobbyManagerInstance.GetPlayerNames();
-        
-        // Populate player list
-        foreach (string playerName in playerNames)
-        {
-            GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
-            playerItem.GetComponentInChildren<TextMeshProUGUI>().text = playerName;
-        }
+        Debug.Log($"UpdatePlayerList: Created {processedPlayerIds.Count} player items");
     }
 }

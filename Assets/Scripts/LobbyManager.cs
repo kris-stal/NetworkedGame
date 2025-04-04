@@ -6,10 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System;
 using Unity.Netcode;
-using System.Net;
-using System.Net.Sockets;
 using Unity.Netcode.Transports.UTP;
-using Unity.Services.Multiplayer;
 using Unity.Services.Relay;
 using Unity.Services.Relay.Models;
 
@@ -26,6 +23,8 @@ public class LobbyManager : MonoBehaviour
     
     // Constants
     private const float lobbyUpdateTimerMax = 2f;
+    private float pingMeasurementTimer = 0f;
+    private const float PING_MEASUREMENT_INTERVAL = 2f;
     
     // Public variables
     public Lobby HostLobby => hostLobby;
@@ -54,6 +53,9 @@ public class LobbyManager : MonoBehaviour
         public List<Lobby> lobbyList;
     }
 
+    private bool hasRegisteredWithHost = false;
+
+
 
     // Awake is called first, before start
     private void Awake()
@@ -80,33 +82,48 @@ public class LobbyManager : MonoBehaviour
         // Subscribe to events
         OnJoinedLobby += HandleJoinedLobby;
 
-    NetworkManager.Singleton.OnClientConnectedCallback += (clientId) =>
-    {
-        Debug.Log($"Successfully connected to host as Client-{clientId}");
-
-        // For local client connection
-        if (clientId == NetworkManager.Singleton.LocalClientId)
+        NetworkManager.Singleton.OnClientConnectedCallback += (clientId) =>
         {
-            string localPlayerId = AuthenticationService.Instance.PlayerId;
-            
-            // Register player with both IDs
-            RegisterPlayer(localPlayerId, clientId);
-            
-            // If client (not host), inform the host about our mapping
-            if (!IsHost)
+            Debug.Log($"Successfully connected to host as Client-{clientId}");
+
+            // For local client connection
+            if (clientId == NetworkManager.Singleton.LocalClientId)
             {
-                NotifyHostAboutPlayerMapping_ServerRpc(localPlayerId);
-            }
-        }
-        else if (IsHost)
-        {
-            // Remote client connected to host - we'll register them
-            // once they identify themselves via RPC
-            Debug.Log($"Remote client {clientId} connected to host, awaiting player identification");
-        }
-    };
+                string localPlayerId = AuthenticationService.Instance.PlayerId;
 
-    NetworkManager.Singleton.OnClientDisconnectCallback += (clientId) =>
+                // Register player with both IDs
+                RegisterPlayer(localPlayerId, clientId);
+
+                // If client (not host), inform the host about our mapping
+                if (!IsHost && !hasRegisteredWithHost)
+                {
+                    hasRegisteredWithHost = true;
+                    Debug.Log($"Client informing host about mapping: {localPlayerId} -> {clientId}");
+                    NotifyHostAboutPlayerMapping_ServerRpc(localPlayerId);
+                }
+            }
+            else if (IsHost)
+            {
+                // Remote client connected to host - we'll register them once they identify themselves via RPC
+                Debug.Log($"Remote client {clientId} connected to host, awaiting player identification");
+            }
+
+            // 🔍 Debug: Print full mapping on connect
+            Debug.Log("Current playerClientIds mapping:");
+            foreach (var kvp in playerClientIds)
+            {
+                Debug.Log($"PlayerID: {kvp.Key} -> ClientID: {kvp.Value}");
+            }
+
+            // 🔍 Debug: Print all tracked pings too
+            Debug.Log("Current playerPings:");
+            foreach (var kvp in playerPings)
+            {
+                Debug.Log($"PlayerID: {kvp.Key} -> Ping: {kvp.Value}ms");
+            }
+        };
+
+        NetworkManager.Singleton.OnClientDisconnectCallback += (clientId) =>
         {
             Debug.LogError($"Disconnected from host. Client ID: {clientId}");
 
@@ -118,7 +135,20 @@ public class LobbyManager : MonoBehaviour
     {
         // Handle lobby heartbeat and updates
         HandleLobbyHeartbeat();
-        HandleLobbyPollForUpdates();
+        HandleLobbyPollForUpdates(); 
+
+        // Add ping measurement
+        // Check if the instance is the host or a client
+        if (NetworkManager.Singleton.IsHost)
+        {
+            // If we are the host, run the host ping measurement
+            MeasureAndUpdatePingsForHost();
+        }
+        else if (NetworkManager.Singleton.IsConnectedClient)
+        {
+            // If we are a client, run the client ping measurement
+            MeasureAndUpdatePingForClient();
+        }
     }
 
     // Setter for player name
@@ -126,6 +156,76 @@ public class LobbyManager : MonoBehaviour
     {
         playerName = name;
     }
+    private void MeasureAndUpdatePingsForHost()
+    {
+        // Only measure ping if we're connected as a host
+        if (!NetworkManager.Singleton.IsHost)
+            return;
+
+        pingMeasurementTimer += Time.deltaTime;
+
+        if (pingMeasurementTimer < PING_MEASUREMENT_INTERVAL)
+            return;
+
+        pingMeasurementTimer = 0f;
+
+        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        if (transport == null)
+            return;
+
+        // Measure ping for all connected clients
+        foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
+        {
+            // Skip self (host)
+            if (clientId == NetworkManager.Singleton.LocalClientId)
+                continue;
+
+            float pingMs = transport.GetCurrentRtt(clientId) * 1000f;
+            string playerId = GetPlayerIdByClientId(clientId);
+
+            if (!string.IsNullOrEmpty(playerId))
+                UpdatePlayerPing(playerId, pingMs);
+        }
+
+        // Optional: Set the host's own ping to 0
+        string hostPlayerId = GetPlayerIdByClientId(NetworkManager.Singleton.LocalClientId);
+        if (!string.IsNullOrEmpty(hostPlayerId))
+            UpdatePlayerPing(hostPlayerId, 0f);
+    }
+
+    private void MeasureAndUpdatePingForClient()
+    {
+        if (!NetworkManager.Singleton.IsConnectedClient)
+            return;
+
+        pingMeasurementTimer += Time.deltaTime;
+
+        if (pingMeasurementTimer < PING_MEASUREMENT_INTERVAL)
+            return;
+
+        pingMeasurementTimer = 0f;
+
+        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        if (transport == null)
+            return;
+
+        // Measure RTT to the host
+        float pingMs = transport.GetCurrentRtt(NetworkManager.ServerClientId) * 1000f;
+
+        // Update *client’s* own ping
+        string localPlayerId = GetPlayerIdByClientId(NetworkManager.Singleton.LocalClientId);
+        if (!string.IsNullOrEmpty(localPlayerId))
+            UpdatePlayerPing(localPlayerId, pingMs);
+
+        // Update *host’s* ping (from client's perspective) — same RTT
+        string hostPlayerId = GetPlayerIdByClientId(NetworkManager.ServerClientId);
+        if (!string.IsNullOrEmpty(hostPlayerId))
+            UpdatePlayerPing(hostPlayerId, pingMs);
+    }
+
+
+
+
 
     // Heartbeat function to keep server alive
     private async void HandleLobbyHeartbeat()
@@ -602,21 +702,34 @@ public class LobbyManager : MonoBehaviour
         return 0f;
     }
 
-    // After game starts, map player IDs to client IDs
     public void MapPlayerIdToClientId(string playerId, ulong clientId)
     {
-        // Remove any existing mappings for this client ID
+        if (string.IsNullOrEmpty(playerId))
+        {
+            Debug.LogError($"Attempted to map null/empty PlayerID to ClientID: {clientId}");
+            return;
+        }
+
+        // Check if this player ID is already mapped to this client ID
+        if (playerClientIds.TryGetValue(playerId, out ulong existingClientId) && existingClientId == clientId)
+        {
+            Debug.Log($"PlayerID: {playerId} is already mapped to ClientID: {clientId}. Skipping duplicate mapping.");
+            return;
+        }
+        
+        // Remove any existing mappings for this client ID if it's a different player
         string existingPlayerId = GetPlayerIdByClientId(clientId);
         if (existingPlayerId != null && existingPlayerId != playerId)
         {
             playerClientIds.Remove(existingPlayerId);
-            Debug.Log($"Removed existing mapping for ClientId {clientId}");
+            Debug.Log($"Removed existing mapping for ClientID {clientId} (was mapped to {existingPlayerId}) due to new mapping for PlayerID: {playerId}");
         }
         
-        // Update or add the new mapping
+        // Add or update the new mapping
         playerClientIds[playerId] = clientId;
         Debug.Log($"Mapped PlayerID: {playerId} -> ClientID: {clientId}");
     }
+
 
     public string GetPlayerIdByClientId(ulong clientId)
     {
@@ -651,6 +764,9 @@ public class LobbyManager : MonoBehaviour
         {
             playerId = AuthenticationService.Instance.PlayerId;
         }
+
+        Debug.Log($"RegisterPlayer called for PlayerID: {playerId}, ClientID: {clientId}");
+
         
         // Track ping for this player if not already tracked
         if (!playerPings.ContainsKey(playerId))
@@ -677,22 +793,26 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
-    // In LobbyManager class
+
+
+    // RPCS //
     [ServerRpc(RequireOwnership = false)]
     private void NotifyHostAboutPlayerMapping_ServerRpc(string playerId, ServerRpcParams rpcParams = default)
     {
-        // Get the sender's client ID from RPC parameters
+        // Get the sender's client ID from the RPC parameters
         ulong sendingClientId = rpcParams.Receive.SenderClientId;
         
-        // Map this player ID to the client ID on the server
+        Debug.Log($"Server RPC received from client {sendingClientId} for player {playerId}");
+        
+        // Map the player ID to the client ID
         MapPlayerIdToClientId(playerId, sendingClientId);
         Debug.Log($"Host received player mapping: PlayerID: {playerId} -> ClientID: {sendingClientId}");
         
-        // Broadcast this mapping to all clients
+        // Broadcast the mapping to all clients
         NotifyAllClientsAboutMapping_ClientRpc(playerId, sendingClientId);
     }
 
-    // Broadcast the mapping to all clients
+    // Update this method to avoid resetting clientId unnecessarily
     [ClientRpc]
     private void NotifyAllClientsAboutMapping_ClientRpc(string playerId, ulong clientId)
     {

@@ -63,7 +63,7 @@ public class MenuManager : MonoBehaviour
             AuthenticationService.Instance.SignedIn += async () =>
             {
                 Debug.Log($"Signed in as {AuthenticationService.Instance.PlayerId}");
-                await LobbyManager.Instance.SearchAndRefreshLobbies(); // Refresh lobbies after sign-in
+                await lobbyManagerInstance.SearchAndRefreshLobbies(); // Refresh lobbies after sign-in
             };
 
             await AuthenticationService.Instance.SignInAnonymouslyAsync();
