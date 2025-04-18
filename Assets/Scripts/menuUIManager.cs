@@ -177,7 +177,7 @@ public class MenuUIManager : MonoBehaviour
         if (!lobbyUI.activeSelf || menuManagerInstance == null || lobbyManagerInstance == null) return;
 
         // Update lobby info
-        lobbyNameText.text = "Lobby: " + lobbyManagerInstance.LobbyName;
+        lobbyNameText.text = lobbyManagerInstance.LobbyName;
         lobbyCodeText.text = "Code: " + lobbyManagerInstance.LobbyCode;
         playerCountText.text = "Players: " + lobbyManagerInstance.GetPlayerCount() + "/4";
         
@@ -401,6 +401,34 @@ public class MenuUIManager : MonoBehaviour
         }
         
         Debug.Log($"UpdatePlayerList: Created {processedPlayerIds.Count} player items");
+    }
+
+
+    public void UpdatePlayerReadyStatus(string playerId, bool isReady)
+    {
+        foreach (GameObject playerItemObject in instantiatedPlayerItems)
+        {
+            PlayerListItem item = playerItemObject.GetComponent<PlayerListItem>();
+            if (item != null && item.PlayerId == playerId)
+            {
+                item.SetReadyStatus(isReady);
+            }
+        }
+    }
+
+
+
+    // PING MANAGEMENT //
+    public void UpdatePlayerPing(string playerId, float ping)
+    {
+        foreach (var playerItemObject in instantiatedPlayerItems)
+        {
+            PlayerListItem item = playerItemObject.GetComponent<PlayerListItem>();
+            if (item != null && item.PlayerId == playerId)
+            {
+                item.UpdatePing(ping);
+            }
+        }
     }
 
 

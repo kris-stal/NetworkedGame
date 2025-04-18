@@ -14,7 +14,7 @@ using System.Collections;
 // Manager for Lobby Service
 // Handles all lobby functionality (lobbies/players in the lobby)
 // Including creating, searching, joining and leaving lobbies.
-public class LobbyManager : MonoBehaviour
+public class LobbyManager : NetworkBehaviour
 {   
     // REFERENCES //
     // Singleton public reference
@@ -30,7 +30,7 @@ public class LobbyManager : MonoBehaviour
     private Lobby joinedLobby;
     private float heartbeatTimer;
     private string playerName;
-    public Dictionary<string, bool> playerReadyStatus = new Dictionary<string, bool>();
+
 
     
     // Constants
@@ -40,10 +40,10 @@ public class LobbyManager : MonoBehaviour
     public Lobby CurrentLobby => hostLobby ?? joinedLobby;
     public string LobbyName => CurrentLobby?.Name ?? "";
     public string LobbyCode => CurrentLobby?.LobbyCode ?? "";
-    public bool IsHost => hostLobby != null;
+    public Dictionary<string, bool> playerReadyStatus = new Dictionary<string, bool>();
 
     // Events
-    public event EventHandler<LobbyEventArgs> OnLeftLobby;
+    public event EventHandler OnLeftLobby;
     public event EventHandler<LobbyEventArgs> OnJoinedLobby;
     public event EventHandler<LobbyEventArgs> OnJoinedLobbyUpdate;
     public event EventHandler<LobbyEventArgs> OnKickedFromLobby;
@@ -77,7 +77,7 @@ public class LobbyManager : MonoBehaviour
 
     private void Start()
     {
-        // Get script instances from CoreManager
+        // Get script instances
         coreManagerInstance = CoreManager.Instance;
         menuUIManagerInstance = coreManagerInstance.menuUIManagerInstance;
         
@@ -571,6 +571,18 @@ public class LobbyManager : MonoBehaviour
         return false;
     }
 
+    public string HostPlayerId
+    {
+        get
+        {
+            if (CurrentLobby != null && CurrentLobby.Players != null && CurrentLobby.Players.Count > 0)
+            {
+                return CurrentLobby.Players[0].Id; // Assumes the host is the first player
+            }
+            return string.Empty;
+        }
+    }
+
     // Get new player data
     private Player GetPlayer()
     {
@@ -637,13 +649,12 @@ public class LobbyManager : MonoBehaviour
     [ClientRpc]
     private void UpdateReadyStatusClientRpc(string playerId, bool isReady)
     {
-        // Ensure this is only executed on clients
-        if (NetworkManager.Singleton.IsServer)
+        // Instead of checking just IsServer, check that this instance is NOT a pure server.
+        if (NetworkManager.Singleton.IsServer && !NetworkManager.Singleton.IsClient)
         {
-            Debug.Log("[ClientRpc] UpdateReadyStatusClientRpc called on the server. Ignoring...");
+            Debug.Log("[ClientRpc] UpdateReadyStatusClientRpc called on server-only instance. Ignoring...");
             return;
         }
-
 
         // Update the ready status on all clients
         if (playerReadyStatus.ContainsKey(playerId))
@@ -658,7 +669,21 @@ public class LobbyManager : MonoBehaviour
         Debug.Log($"[Client] Updated ready status for player {playerId}: {isReady}");
 
         // Update the UI for the player list
-        MenuUIManager.Instance.UpdatePlayerList();
+        menuUIManagerInstance.UpdatePlayerReadyStatus(playerId, isReady);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestUpdateReadyStatusServerRpc(string playerId, bool isReady)
+    {
+        // Ensure this is only executed on the server
+        if (!NetworkManager.Singleton.IsServer)
+        {
+            Debug.LogError("[ServerRpc] RequestUpdateReadyStatusServerRpc called on a non-server instance!");
+            return;
+        }
+
+        // Call the existing method to update the ready status
+        UpdateReadyStatusServerRpc(playerId, isReady);
     }
 
 
@@ -695,8 +720,10 @@ public class LobbyManager : MonoBehaviour
 
 
     // CLEANUP //
-    private void OnDestroy()
+    public override void OnDestroy()
     {
+        base.OnDestroy();
+
         // Unsubscribe from events
         OnJoinedLobby -= HandleJoinedLobby;
         

@@ -1,4 +1,5 @@
 using TMPro;
+using Unity.Netcode;
 using Unity.Services.Authentication;
 using UnityEngine;
 using UnityEngine.UI;
@@ -23,6 +24,7 @@ public class PlayerListItem : MonoBehaviour
     // VARIABLES
     private string playerId;
     private bool isReady;
+    public string PlayerId => playerId;
 
 
 
@@ -37,7 +39,7 @@ public class PlayerListItem : MonoBehaviour
         this.playerId = playerId;
         this.playerNameText.text = playerName;
         this.isReady = false;
-        this.playerPingText.text = "0";
+        this.playerPingText.text = "";
 
         // Enable or disable the ready button based on whether this is the local player
         this.readyButton.interactable = isLocalPlayer;
@@ -69,7 +71,16 @@ public class PlayerListItem : MonoBehaviour
         Debug.Log($"Player {playerId} ready status: {isReady}");
 
         // Notify LobbyManager about the change
-        lobbyManagerInstance?.UpdateReadyStatusServerRpc(playerId, isReady);
+        if (NetworkManager.Singleton.IsServer)
+        {
+            // Call the ServerRpc directly if this is the server
+            lobbyManagerInstance?.UpdateReadyStatusServerRpc(playerId, isReady);
+        }
+        else
+        {
+            // Call the new ServerRpc to notify the server
+            lobbyManagerInstance?.RequestUpdateReadyStatusServerRpc(playerId, isReady);
+        }
     }
 
     public void SetReadyStatus(bool isReady)
@@ -78,5 +89,44 @@ public class PlayerListItem : MonoBehaviour
 
         // Update the ready status UI (e.g., change button color or status icon)
         readyStatusImage.color = isReady ? Color.green : Color.red;
+    }
+
+
+
+    // PING //
+    public void UpdatePing(float ping)
+    {
+        // Check if this player is the host (using LobbyManager's HostPlayerId)
+        if (lobbyManagerInstance != null &&
+            !string.IsNullOrEmpty(lobbyManagerInstance.HostPlayerId) &&
+            this.PlayerId == lobbyManagerInstance.HostPlayerId)
+        {
+            playerPingText.text = "HOST";
+            // Optionally, assign a special color for the host
+            playerPingText.color = Color.cyan;
+            return;
+        }
+        
+        // Otherwise, update and display the ping value
+        float pingMs = ping * 1000f;
+        if (pingMs < 1f) // Ensure a minimal display value if ping is very low
+        {
+            pingMs = 1f;
+        }
+        playerPingText.text = $"{pingMs:F0} ms";
+        
+        // Optionally, adjust the color based on the ping value:
+        if (pingMs > 100f)
+        {
+            playerPingText.color = Color.red;
+        }
+        else if (pingMs > 50f)
+        {
+            playerPingText.color = Color.yellow;
+        }
+        else
+        {
+            playerPingText.color = Color.green;
+        }
     }
 }

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 // Manager for functionality in the menu
 // Handles launching games
-public class MenuManager : MonoBehaviour
+public class MenuManager : NetworkBehaviour
 {
     // REFERENCES
     // Singleton pattern
@@ -163,7 +163,7 @@ public class MenuManager : MonoBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void StartStressTestRpc()
+    public void StartStressTestRpcServerRpc()
     {
         if (!NetworkManager.Singleton.IsHost) return;  // Only the host can load the scene
 

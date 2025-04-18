@@ -20,6 +20,7 @@ public class CoreManager : MonoBehaviour
     public MenuUIManager menuUIManagerInstance { get; private set; }
     public GameManager gameManagerInstance { get; private set; }
     public GameUIManager gameUIManagerInstance { get; private set; }
+    public PingManager pingManagerInstance { get; private set; }
 
 
 
@@ -32,6 +33,7 @@ public class CoreManager : MonoBehaviour
     [SerializeField] private GameObject gameManagerPrefab;
     [SerializeField] private GameObject gameUIManagerPrefab;
     [SerializeField] private GameObject pingManagerPrefab;
+    
 
 
 
@@ -180,6 +182,24 @@ public class CoreManager : MonoBehaviour
 
             // If still null after checking all methods, log an error
             if (lobbyManagerInstance == null) Debug.LogError("LobbyManager not found!");
+        }
+
+        if (pingManagerInstance == null)
+        {
+            // First, try finding using the singleton or by tag
+            pingManagerInstance = PingManager.Instance ?? GameObject.FindGameObjectWithTag("PingManager")?.GetComponent<PingManager>();
+
+            // If not found, instantiate from prefab
+            if (pingManagerInstance == null && pingManagerPrefab != null)
+            {
+                GameObject pingManagerObject = Instantiate(pingManagerPrefab);
+                lobbyManagerInstance = pingManagerObject.GetComponent<LobbyManager>();
+                DontDestroyOnLoad(pingManagerObject); // Ensure it persists across scenes
+                Debug.Log("PingManager instantiated from prefab.");
+            }
+
+            // If still null after checking all methods, log an error
+            if (pingManagerInstance == null) Debug.LogError("PingManager not found!");
         }
 
 

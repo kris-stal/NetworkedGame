@@ -6,7 +6,7 @@ using Unity.Multiplayer.Tools.NetStatsMonitor;
 
 // Manager for handling in game UI
 // Handles player ping, score, countdown and tab menu
-public class GameUIManager : NetworkBehaviour
+public class GameUIManager : MonoBehaviour
 {   
     // REFERENCES //
     // Singleton Pattern
