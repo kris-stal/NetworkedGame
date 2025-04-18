@@ -3,8 +3,12 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 
+// Manager for handling the Network Stress Test
+// Handles functionality in stress testing the network by serializing data to share between host and client.
 public class NetworkStressTest : NetworkBehaviour
 {
+    // VARIABLES //
+    // Network variables to share
     private NetworkVariable<int> randomNumber = new NetworkVariable<int>(
         1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
@@ -12,6 +16,7 @@ public class NetworkStressTest : NetworkBehaviour
         new MyCustomData { _int = 0, _bool = false, message = "Initial", randomMatrix = new List<float>(new float[1000]) },
         NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     
+    // My Custom Data structure to share
     public struct MyCustomData : INetworkSerializable
     {
         public int _int;
@@ -65,6 +70,9 @@ public class NetworkStressTest : NetworkBehaviour
         }
     }
 
+
+
+
     private void Start()
     {
         if (IsOwner)
@@ -79,11 +87,25 @@ public class NetworkStressTest : NetworkBehaviour
         }
     }
 
+    public override void OnNetworkSpawn()
+    {
+        randomNumber.OnValueChanged += (prev, next) => Debug.Log(OwnerClientId + " Random: " + next);
+        customData.OnValueChanged += (prev, next) =>
+        { 
+            Debug.Log(OwnerClientId + " Custom Data: " + next._int + ", " + next._bool + ", " + next.message);
+            Debug.Log("Matrix First Value: " + next.randomMatrix[0] + ", Last Value: " + next.randomMatrix[next.randomMatrix.Count - 1]);
+        };
+    }
+
+    
+
+    // DATA ROUTINES //
+    // Routine to generate new variables for existing data structure every 2 seconds
     private IEnumerator RandomDataSyncRoutine()
     {
         while (true)
         {
-            yield return new WaitForSeconds(1f); // Reduce update rate to optimize
+            yield return new WaitForSeconds(2f);
 
             // Modify existing values instead of reallocating memory
             for (int i = 0; i < 10; i++)
@@ -102,6 +124,8 @@ public class NetworkStressTest : NetworkBehaviour
         }
     }
 
+
+    // Routine to consistently send new data (a big array of size 1000) across to server from clients
     private IEnumerator RPCSpamRoutine()
     {
         while (true)
@@ -114,6 +138,10 @@ public class NetworkStressTest : NetworkBehaviour
         }
     }
 
+
+
+    // RPCS //
+    // Clients call this RPC to send the big array to host
     [ServerRpc]
     private void SendSpamServerRpc(int[] bigArray, ServerRpcParams rpcParams = default)
     {
@@ -123,20 +151,11 @@ public class NetworkStressTest : NetworkBehaviour
         SendSpamClientRpc(bigArray);
     }
 
+
+    // Clients recieve back the big array RPC from the host, causing more network stress
     [ClientRpc]
     private void SendSpamClientRpc(int[] bigArray)
     {
         Debug.Log($"Client received RPC with {bigArray.Length} elements.");
-    }
-
-
-    public override void OnNetworkSpawn()
-    {
-        randomNumber.OnValueChanged += (prev, next) => Debug.Log(OwnerClientId + " Random: " + next);
-        customData.OnValueChanged += (prev, next) =>
-        { 
-            Debug.Log(OwnerClientId + " Custom Data: " + next._int + ", " + next._bool + ", " + next.message);
-            Debug.Log("Matrix First Value: " + next.randomMatrix[0] + ", Last Value: " + next.randomMatrix[next.randomMatrix.Count - 1]);
-        };
     }
 }

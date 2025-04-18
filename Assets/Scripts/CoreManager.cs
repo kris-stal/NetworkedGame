@@ -5,14 +5,15 @@ using Unity.Services.Core;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-// Core Manager to manage all other managers in finding/intializing them.
-// This script finds all other scripts and services that will be required in other scripts.
+// Manager for handling script references and service initialization
+// This script finds all other scripts and services that will be required in other scripts and ensures they are ready
 public class CoreManager : MonoBehaviour
 {
+    // REFERENCES //
     // Singleton instance references for this Core Manager
     public static CoreManager Instance { get; private set; }
     
-    // other Manager references
+    // other script references
     public NetworkManager networkManagerInstance { get; private set; }
     public LobbyManager lobbyManagerInstance { get; private set; }
     public MenuManager menuManagerInstance { get; private set; }
@@ -21,16 +22,20 @@ public class CoreManager : MonoBehaviour
     public GameUIManager gameUIManagerInstance { get; private set; }
 
 
-    // Manager Prefabs
+
+    // PREFABS //
+    // For instantiation
     [SerializeField] private GameObject networkManagerPrefab;
     [SerializeField] private GameObject lobbyManagerPrefab;
     [SerializeField] private GameObject menuManagerPrefab;
     [SerializeField] private GameObject menuUIManagerPrefab;
     [SerializeField] private GameObject gameManagerPrefab;
     [SerializeField] private GameObject gameUIManagerPrefab;
+    [SerializeField] private GameObject pingManagerPrefab;
 
 
-    // Variables
+
+    // VARIABLES //
     private bool isNetworkInitialized = false;
 
 
@@ -67,13 +72,7 @@ public class CoreManager : MonoBehaviour
 
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
-
-
+    // SERVICE INITIALIZATION //
     public async Task<bool> InitializeUnityServices(string playerProfile = null)
     {
         try
@@ -103,7 +102,7 @@ public class CoreManager : MonoBehaviour
         }
     }
 
-   public bool InitializeNetworkManager()
+    public bool InitializeNetworkManager()
     {
         if (isNetworkInitialized) return true; // If already initialized, exit
 
@@ -159,6 +158,9 @@ public class CoreManager : MonoBehaviour
         return false;
     }
 
+
+
+    // MANAGER INITIALIZATION
     public void InitializeManagerInstances()
     {
         // Always find Lobby Manager which is persistent between scenes.
@@ -257,6 +259,8 @@ public class CoreManager : MonoBehaviour
     }
 
 
+    
+    // EVENTS //
     // Scene loaded event
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
@@ -265,7 +269,9 @@ public class CoreManager : MonoBehaviour
         InitializeManagerInstances();
     }
 
-    // Cleanup when this is destroyed
+
+
+    // CLEANUP //
     private void OnDestroy()
     {
         // Unsubscribe from events

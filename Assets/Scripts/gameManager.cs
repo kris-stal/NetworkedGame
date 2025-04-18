@@ -4,21 +4,24 @@ using System.Collections.Generic;
 using UnityEngine.SceneManagement;
 using System.IO;
 
-// Main Game Manager script for handling game and networking logic
+// Manager for game functionality
+// Handles game start, countdown timers, player pings, scoring
 public class GameManager : NetworkBehaviour
 {
-    // Singleton Pattern for easy access to the gameManager from other scripts and to prevent duplicates
+    // REFERENCES
+    // Singleton Pattern Reference
     public static GameManager Instance { get; private set; }
-
         
-    // Reference other scripts via CoreManager
+    // Reference other scripts 
     private CoreManager coreManagerInstance;
     private GameUIManager gameUIManagerInstance;
     private LobbyManager lobbyManagerInstance;
 
 
-    // Variables
-    // Network variables for player scores
+
+    // VARIABLES //
+    // Network variables 
+    // Player scores
     private NetworkVariable<int> playerScore1 = new NetworkVariable<int>(
         0,  // Initial value
         NetworkVariableReadPermission.Everyone,  // Everyone can read the score
@@ -31,7 +34,7 @@ public class GameManager : NetworkBehaviour
         NetworkVariableWritePermission.Server 
     );
 
-    // Countdown and game state variables
+    // Game state variables
     private NetworkVariable<float> countdownTimer = new NetworkVariable<float>(
         0f,
         NetworkVariableReadPermission.Everyone,
@@ -57,8 +60,7 @@ public class GameManager : NetworkBehaviour
     );
 
     
-    // Other Network Variables
-    
+    // Game and player state variables
     [System.Serializable] // Class to store state of game
     public class GameState
     {
@@ -95,13 +97,14 @@ public class GameManager : NetworkBehaviour
         public float disconnectTime;
     }
 
+    // Other network variables
     private float pingUpdateInterval = 3f; // How often ping update is carried out
     private float timeSinceLastPingUpdate = 0f; // Timer for ping update
     private Dictionary<ulong, float> playerPings = new Dictionary<ulong, float>(); // Player pings dictionary
 
     private Dictionary<ulong, string> playerIds = new Dictionary<ulong, string>(); // Maps NetworkObject IDs to Auth IDs
+    public float lastPing = -5f;
     
-
 
     // Game Variables
     GameObject theBall; // Get ball Game Object
@@ -130,7 +133,6 @@ public class GameManager : NetworkBehaviour
 
         // Else, there is no other instance so set this as the instance
         Instance = this;
-
     }
 
 
@@ -155,13 +157,12 @@ public class GameManager : NetworkBehaviour
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
         gameUIManagerInstance = coreManagerInstance.gameUIManagerInstance;
 
-        // Spawn Positions
+        // Set Spawn Positions
         playerSpawnPos.Add(new Vector3(-5, 1, 0)); // spawn pos 1
         playerSpawnPos.Add(new Vector3(5, 1, 0)); // spawn pos 2
         Debug.Log(playerSpawnPos.Count); // Output num of spawn pos for testing
 
         onLoadArena();
-
 
         // Call RPC only if the object is spawned and we are the server
         if (IsServer && IsSpawned)
@@ -179,23 +180,24 @@ public class GameManager : NetworkBehaviour
         {
             timeSinceLastPingUpdate = 0f;
             UpdatePingValues();
-        }
-        
-        // Check for unstable connection
-        if (IsClient && !IsServer)
-        {
-            
-            float myPing = GetPlayerPing(NetworkManager.Singleton.LocalClientId);
-            gameUIManagerInstance.changeResolution(myPing);
 
-            bool isHighPing = myPing > 50f;
-            gameUIManagerInstance.toggleHighPingWarning(isHighPing);
-
-            if (myPing > 100f)
+            // Check for unstable connection
+            if (IsClient && !IsServer)
             {
-                Debug.Log($"Connection unstable: High ping detected ({myPing}ms)");
+                float myPing = GetPlayerPing(NetworkManager.Singleton.LocalClientId);
+
+                if (Mathf.Abs(myPing - lastPing) >= 10)
+                {
+                lastPing = myPing;
+
+                gameUIManagerInstance.changeResolution(myPing);
+
+                bool isHighPing = myPing > 50f;
+                gameUIManagerInstance.toggleHighPingWarning(isHighPing);
+                }
             }
         }
+        
 
         // Handle countdown timer on server
         if (IsServer && countdownTimer.Value > 0)
@@ -245,7 +247,51 @@ public class GameManager : NetworkBehaviour
         }
     }
 
+    // GAME FUNCTIONALITY //
+    // For above use in starting the game.
+    [ServerRpc]
+    private void StartGameServerRpc()
+    {
+        if (!IsServer) return;
+        
+        gameInProgress.Value = true;
+        
+        // Launch the ball in a random direction
+        if (theBall != null && theBall.TryGetComponent<Rigidbody>(out Rigidbody rb))
+        {
+            rb.isKinematic = false;
+            rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
+        }
 
+        // Enable player controllers - now using PlayerNetwork
+        foreach (GameObject player in playerObjects)
+        {
+            if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
+            {
+                controller.SetMovementEnabled(true);
+            }
+        }
+        // Notify clients that the game has started
+        StartGameClientRpc();
+    }
+
+    
+    [ClientRpc]
+    private void StartGameClientRpc()
+    {
+        Debug.Log("Game started!");
+        
+        // Enable player controllers - now using PlayerNetwork
+        foreach (GameObject player in playerObjects)
+        {
+            if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
+            {
+                controller.SetMovementEnabled(true);
+            }
+        }
+    }
+
+    // Start game upon loading the arena scene
     // Find ball, players and start initial countdown
     public void onLoadArena()
     {
@@ -297,6 +343,43 @@ public class GameManager : NetworkBehaviour
         Debug.Log("Starting initial countdown: " + INITIAL_COUNTDOWN + " seconds");
     }
 
+    // Reset Players RPC (Position + Velocity)
+    [ServerRpc]
+    private void ResetPlayersServerRpc()
+    {
+        if (!IsServer) return;
+
+        int playerCount = playerObjects.Count;
+        Debug.Log($"Resetting {playerCount} players");
+
+        // Reset positions and velocities of all players
+        for (int i = 0; i < playerCount && i < playerSpawnPos.Count; i++)
+        {
+            if (playerObjects[i] != null)
+            {
+                // Reset position and velocity
+                playerObjects[i].transform.position = playerSpawnPos[i];
+                if (playerObjects[i].TryGetComponent<Rigidbody>(out Rigidbody rb))
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+                Debug.Log($"Reset player {i} to position {playerSpawnPos[i]}");
+            }
+        }
+        
+        // Notify clients
+        ResetPlayersClientRpc();
+    }
+
+    // Notify Players
+    [ClientRpc]
+    private void ResetPlayersClientRpc()
+    {
+        // Any client-side logic needed when players are reset
+        Debug.Log("Player positions reset on client");
+    }
+
     // Freeze ball and players during countdown
     private void FreezeBallAndPlayers()
     {
@@ -316,6 +399,179 @@ public class GameManager : NetworkBehaviour
         }
     }
 
+    // Reset Ball RPC
+    [ServerRpc]
+    private void ResetBallServerRpc()
+    {
+        if (theBall != null)
+        {
+            // Reset position
+            theBall.transform.position = new Vector3(0, 1, 0);
+            
+            // Reset velocity
+            if (theBall.TryGetComponent<Rigidbody>(out Rigidbody rb))
+            {
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                
+                // Apply random force
+                rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
+            }
+            
+            // Notify clients
+            ResetBallClientRpc();
+        }
+    }
+
+    // Notify players
+    [ClientRpc]
+    private void ResetBallClientRpc()
+    {
+        // Any client-side logic needed when ball is reset
+        Debug.Log("Ball position reset on client");
+    }
+
+    public void LeaveGame()
+    {
+        if (NetworkManager.Singleton != null)
+        {
+            if (NetworkManager.Singleton.IsClient)
+            {
+                // Destroy player object before disconnecting
+                if (NetworkManager.Singleton.LocalClient != null && NetworkManager.Singleton.LocalClient.PlayerObject != null)
+                {
+                    NetworkObject playerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
+                    if (playerObject.IsOwner)
+                    {
+                        RequestDespawnServerRpc(playerObject);// Despawn on network
+                    }
+
+                    // Disconnect
+                    NetworkManager.Singleton.Shutdown();
+
+                    // Load lobby scene again
+                    SceneManager.LoadScene("LobbyMenu");
+                }
+            }
+        }
+    }
+
+    // Despawn player object
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestDespawnServerRpc(NetworkObjectReference objectRef)
+    {
+        if (objectRef.TryGet(out NetworkObject networkObject))
+        {
+            networkObject.Despawn();
+        }
+    }
+
+    // Start reset countdown between points
+    private void StartResetCountdown()
+    {
+        if (!IsServer) return;
+        
+        // Pause game and start countdown
+        gameInProgress.Value = false;
+        countdownTimer.Value = RESET_COUNTDOWN;
+        
+        // Reset positions
+        ResetPlayersServerRpc();
+        ResetBallServerRpc();
+        
+        Debug.Log("Starting reset countdown: " + RESET_COUNTDOWN + " seconds");
+    }
+    
+    // Handle game over
+    private void GameOver(ulong winningPlayer)
+    {
+        if (!IsServer) return;
+        
+        gameOver.Value = true;
+        gameInProgress.Value = false;
+        winnerClientId.Value = winningPlayer;
+        
+        Debug.Log("Game Over! Player " + winningPlayer + " wins!");
+    }
+
+    // Start a new game after someone has won
+    public void StartNewGame()
+    {
+        if (!IsServer) return;
+        
+        // Reset scores
+        playerScore1.Value = 0;
+        playerScore2.Value = 0;
+        
+        // Reset game state
+        gameOver.Value = false;
+        
+        // Start initial countdown
+        StartInitialCountdown();
+    }
+
+    private void OnGameInProgressChanged(bool previous, bool current)
+    {
+        // When game starts, enable movement for all players
+        if (current == true)
+        {
+            foreach (GameObject player in playerObjects)
+            {
+                if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
+                {
+                    controller.SetMovementEnabled(true);
+                }
+            }
+        }
+    }
+
+
+
+    // SCORE HANDLING //
+    // Getting player scores
+    public int GetPlayer1Score()
+    {
+        return playerScore1.Value;
+    }
+    public int GetPlayer2Score()
+    {
+        return playerScore2.Value;
+    }
+
+    public void Score(bool isPlayer1Scored) 
+    {
+        if (!IsServer) return; // Only server can update score
+
+        if (isPlayer1Scored) // if player 1 scored
+        {
+            playerScore1.Value += 1; // update player 1 score
+            
+            // Check for win condition
+            if (playerScore1.Value >= WIN_SCORE)
+            {
+                GameOver(1);
+                return;
+            }
+        }
+        else // else player 2 scored
+        {
+            playerScore2.Value += 1; // update player 2 score
+            
+            // Check for win condition
+            if (playerScore2.Value >= WIN_SCORE)
+            {
+                GameOver(2);
+                return;
+            }
+        }
+
+        // Reset and start countdown for next point
+        StartResetCountdown();
+    }
+    
+
+
+    // PING FUNCTIONALITY //
     // Updating player's ping
     private void UpdatePingValues()
     {
@@ -352,16 +608,37 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    // Helper method to get the client ID of a player GameObject
-    public ulong GetPlayerClientId(GameObject playerObject)
+    // Client calls this to request their ping from server
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestPingServerRpc(ServerRpcParams serverRpcParams = default)
     {
-        if (playerObject != null && playerObject.TryGetComponent<NetworkObject>(out NetworkObject netObj))
+        ulong clientId = serverRpcParams.Receive.SenderClientId;
+        try
         {
-            return netObj.OwnerClientId;
+            float rtt = NetworkManager.Singleton.NetworkConfig.NetworkTransport.GetCurrentRtt(clientId);
+            playerPings[clientId] = rtt;
+            
+            // Send ping value directly back to the requesting client
+            UpdatePingClientRpc(clientId, rtt, new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new ulong[] { clientId }
+                }
+            });
         }
-        return 0;
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"Error getting RTT for client {clientId}: {e.Message}");
+        }
     }
 
+    // Client calls this to update their ping display
+    [ClientRpc]
+    private void UpdatePingClientRpc(ulong clientId, float pingValue, ClientRpcParams clientRpcParams = default)
+    {
+        playerPings[clientId] = pingValue;
+    }
 
     // Get player ping
     public float GetPlayerPing(ulong clientId)
@@ -373,6 +650,19 @@ public class GameManager : NetworkBehaviour
         return 0f;
     }
 
+    // Helper method to get the client ID of a player GameObject
+    public ulong GetPlayerClientId(GameObject playerObject)
+    {
+        if (playerObject != null && playerObject.TryGetComponent<NetworkObject>(out NetworkObject netObj))
+        {
+            return netObj.OwnerClientId;
+        }
+        return 0;
+    }
+
+
+
+    // GAME STATE //
     private void SaveGameStateLocally(GameState state)
     {
         string json = JsonUtility.ToJson(state);
@@ -446,6 +736,9 @@ public class GameManager : NetworkBehaviour
         return state; // Return the captured state
     }
 
+
+
+    // EVENT HANDLING //
     private async void OnClientDisconnect(ulong clientId)
     {
         if (!IsServer) return; // Only server handles this
@@ -486,312 +779,4 @@ public class GameManager : NetworkBehaviour
         // Notify the client that they need to authenticate
     }
     
-    // Leave game
-    public void LeaveGame()
-    {
-        if (NetworkManager.Singleton != null)
-        {
-            if (NetworkManager.Singleton.IsClient)
-            {
-                // Destroy player object before disconnecting
-                if (NetworkManager.Singleton.LocalClient != null && NetworkManager.Singleton.LocalClient.PlayerObject != null)
-                {
-                    NetworkObject playerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
-                    if (playerObject.IsOwner)
-                    {
-                        RequestDespawnServerRpc(playerObject);// Despawn on network
-                    }
-
-                    // Disconnect
-                    NetworkManager.Singleton.Shutdown();
-
-                    // Load lobby scene again
-                    SceneManager.LoadScene("LobbyMenu");
-                }
-            }
-        }
-    }
-
-
-    // Find player count
-    public void findPlayerCount()
-    {
-        int playerCount = playerObjects.Count; // int of num players in list of Player Objects
-    }
-
-    // Score Handling
-    public void Score(bool isPlayer1Scored) 
-    {
-        if (!IsServer) return; // Only server can update score
-
-        if (isPlayer1Scored) // if player 1 scored
-        {
-            playerScore1.Value += 1; // update player 1 score
-            
-            // Check for win condition
-            if (playerScore1.Value >= WIN_SCORE)
-            {
-                GameOver(1);
-                return;
-            }
-        }
-        else // else player 2 scored
-        {
-            playerScore2.Value += 1; // update player 2 score
-            
-            // Check for win condition
-            if (playerScore2.Value >= WIN_SCORE)
-            {
-                GameOver(2);
-                return;
-            }
-        }
-
-        // Reset and start countdown for next point
-        StartResetCountdown();
-    }
-
-    // Start reset countdown between points
-    private void StartResetCountdown()
-    {
-        if (!IsServer) return;
-        
-        // Pause game and start countdown
-        gameInProgress.Value = false;
-        countdownTimer.Value = RESET_COUNTDOWN;
-        
-        // Reset positions
-        ResetPlayersServerRpc();
-        ResetBallServerRpc();
-        
-        Debug.Log("Starting reset countdown: " + RESET_COUNTDOWN + " seconds");
-    }
-    
-    // Handle game over
-    private void GameOver(ulong winningPlayer)
-    {
-        if (!IsServer) return;
-        
-        gameOver.Value = true;
-        gameInProgress.Value = false;
-        winnerClientId.Value = winningPlayer;
-        
-        Debug.Log("Game Over! Player " + winningPlayer + " wins!");
-    }
-
-        // Start a new game after someone has won
-    public void StartNewGame()
-    {
-        if (!IsServer) return;
-        
-        // Reset scores
-        playerScore1.Value = 0;
-        playerScore2.Value = 0;
-        
-        // Reset game state
-        gameOver.Value = false;
-        
-        // Start initial countdown
-        StartInitialCountdown();
-    }
-
-    private void OnGameInProgressChanged(bool previous, bool current)
-    {
-        // When game starts, enable movement for all players
-        if (current == true)
-        {
-            foreach (GameObject player in playerObjects)
-            {
-                if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
-                {
-                    controller.SetMovementEnabled(true);
-                }
-            }
-        }
-    }
-
-    // Getting player scores
-    public int GetPlayer1Score()
-    {
-        return playerScore1.Value;
-    }
-
-    public int GetPlayer2Score()
-    {
-        return playerScore2.Value;
-    }
-
-
-    // Remote Procedure Calls
-    // Network Handling Calls
-
-    // Client calls this to update their ping on the server
-    [ServerRpc(RequireOwnership = false)]
-    private void UpdatePingServerRpc(int pingValue, ServerRpcParams serverRpcParams = default)
-    {
-        ulong clientId = serverRpcParams.Receive.SenderClientId;
-        playerPings[clientId] = pingValue;
-        
-        // Broadcast the updated ping to all clients
-        UpdatePingClientRpc(clientId, pingValue);
-    }
-
-
-    // Client calls this to request their ping from server
-    [ServerRpc(RequireOwnership = false)]
-    private void RequestPingServerRpc(ServerRpcParams serverRpcParams = default)
-    {
-        ulong clientId = serverRpcParams.Receive.SenderClientId;
-        try
-        {
-            float rtt = NetworkManager.Singleton.NetworkConfig.NetworkTransport.GetCurrentRtt(clientId);
-            playerPings[clientId] = rtt;
-            
-            // Send ping value directly back to the requesting client
-            UpdatePingClientRpc(clientId, rtt, new ClientRpcParams
-            {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = new ulong[] { clientId }
-                }
-            });
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"Error getting RTT for client {clientId}: {e.Message}");
-        }
-    }
-
-
-    // Client calls this to update their ping display
-    [ClientRpc]
-    private void UpdatePingClientRpc(ulong clientId, float pingValue, ClientRpcParams clientRpcParams = default)
-    {
-        playerPings[clientId] = pingValue;
-    }
-
-
-    // Game Handling Calls
-    // Start the game when countdown is complete
-    [ServerRpc]
-    private void StartGameServerRpc()
-    {
-        if (!IsServer) return;
-        
-        gameInProgress.Value = true;
-        
-        // Launch the ball in a random direction
-        if (theBall != null && theBall.TryGetComponent<Rigidbody>(out Rigidbody rb))
-        {
-            rb.isKinematic = false;
-            rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
-        }
-
-        // Enable player controllers - now using PlayerNetwork
-        foreach (GameObject player in playerObjects)
-        {
-            if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
-            {
-                controller.SetMovementEnabled(true);
-            }
-        }
-        // Notify clients that the game has started
-        StartGameClientRpc();
-    }
-
-    
-    [ClientRpc]
-    private void StartGameClientRpc()
-    {
-        Debug.Log("Game started!");
-        
-        // Enable player controllers - now using PlayerNetwork
-        foreach (GameObject player in playerObjects)
-        {
-            if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
-            {
-                controller.SetMovementEnabled(true);
-            }
-        }
-    }
-
-    // Reset Ball (Position + Force)
-    [ServerRpc]
-    private void ResetBallServerRpc()
-    {
-        if (theBall != null)
-        {
-            // Reset position
-            theBall.transform.position = new Vector3(0, 1, 0);
-            
-            // Reset velocity
-            if (theBall.TryGetComponent<Rigidbody>(out Rigidbody rb))
-            {
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-                
-                // Apply random force
-                rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
-            }
-            
-            // Notify clients
-            ResetBallClientRpc();
-        }
-    }
-
-    // Notify players
-    [ClientRpc]
-    private void ResetBallClientRpc()
-    {
-        // Any client-side logic needed when ball is reset
-        Debug.Log("Ball position reset on client");
-    }
-
-
-    // Reset Players (Position + Velocity)
-    [ServerRpc]
-    private void ResetPlayersServerRpc()
-    {
-        if (!IsServer) return;
-
-        int playerCount = playerObjects.Count;
-        Debug.Log($"Resetting {playerCount} players");
-
-        // Reset positions and velocities of all players
-        for (int i = 0; i < playerCount && i < playerSpawnPos.Count; i++)
-        {
-            if (playerObjects[i] != null)
-            {
-                // Reset position and velocity
-                playerObjects[i].transform.position = playerSpawnPos[i];
-                if (playerObjects[i].TryGetComponent<Rigidbody>(out Rigidbody rb))
-                {
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
-                }
-                Debug.Log($"Reset player {i} to position {playerSpawnPos[i]}");
-            }
-        }
-        
-        // Notify clients
-        ResetPlayersClientRpc();
-    }
-
-    // Notify Players
-    [ClientRpc]
-    private void ResetPlayersClientRpc()
-    {
-        // Any client-side logic needed when players are reset
-        Debug.Log("Player positions reset on client");
-    }
-
-    // Despawn player object
-    [ServerRpc(RequireOwnership = false)]
-    public void RequestDespawnServerRpc(NetworkObjectReference objectRef)
-    {
-        if (objectRef.TryGet(out NetworkObject networkObject))
-        {
-            networkObject.Despawn();
-        }
-    }
 }

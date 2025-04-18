@@ -1,6 +1,7 @@
 using Unity.Netcode.Components;
 using UnityEngine;
 
+// Modified client network transform
 namespace Unity.Multiplayer.Samples.Utilities.ClientAuthority
 {
     /// <summary>

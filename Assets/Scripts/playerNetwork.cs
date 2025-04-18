@@ -3,31 +3,32 @@ using Unity.Netcode;
 using UnityEngine;
 using System.Collections.Generic;
 
-// Main script for player objects
+// Manager for individual player ball objects
+// Handles movement, collision
 public class PlayerNetwork : NetworkBehaviour
 {
-    // Variables
+    // VARIABLES //
     [SerializeField] private float acceleration = 5f;
     [SerializeField] private float deceleration = 5f;
     [SerializeField] private float maxSpeed = 20f;
+
     public Rigidbody rb; // player rigidbody
     public Vector3 InputKey; // input keys
     private bool movementEnabled = false; // control if movement is enabled
     private Vector3 lastReceivedPosition;
     private Vector3 targetPosition;
     private float interpolationTime = 0f;
-
     private bool isCorrectingPosition = false;
-
     private Vector3 lastSentPosition;
     private Vector3 lastSentVelocity;
+
+    // Constants
     private const float POSITION_THRESHOLD = 0.1f;
     private const float VELOCITY_THRESHOLD = 0.1f;
 
-    // Create a periodic reconciliation timer
+    // Reconciliation variables
     private float reconciliationTimer = 0f;
     private const float RECONCILIATION_INTERVAL = 0.2f; // Reconcile every half second
-
     private float positionErrorThreshold = 2f;
     
 
@@ -36,7 +37,7 @@ public class PlayerNetwork : NetworkBehaviour
     // New NetworkVariable int, (starting value, read permissions, write permissions)
     // Everyone is able to read the value, only owners of this specific network variable (every player has one) can alter the value of their owned variable
 
-    // New custom data struct:
+    // New custom data struct for testing
     private NetworkVariable<MyCustomData> customIntBool = new NetworkVariable<MyCustomData>(
         new MyCustomData {
             _int = 56,
@@ -188,7 +189,9 @@ public class PlayerNetwork : NetworkBehaviour
         }
     }
 
-    // Collision check
+
+
+    // COLLISION 
     private void OnCollisionEnter(Collision collision)
     {
         if (!movementEnabled) return; // skip if movement disabled
@@ -262,7 +265,7 @@ public class PlayerNetwork : NetworkBehaviour
         }
     }
 
-    // Coroutine for smooth correction
+    // Routine for smooth correction
     private IEnumerator SmoothCorrection(Vector3 targetPos, Vector3 targetVel)
     {
         Vector3 startPos = transform.position;
@@ -305,6 +308,8 @@ public class PlayerNetwork : NetworkBehaviour
     }
 
 
+
+    // MOVEMENT //
     // Asking for acceleration in movement
     [ServerRpc]
     private void RequestAccelerateServerRpc(Vector3 InputKey, ServerRpcParams rpcParams = default)
@@ -397,7 +402,20 @@ public class PlayerNetwork : NetworkBehaviour
         SyncVelocityClientRpc(Vector3.zero);
     }
 
-
+    // Server RPC to request authoritative position
+    [ServerRpc]
+    private void RequestServerPositionServerRpc(ServerRpcParams rpcParams = default)
+    {
+        // Server sends its authoritative position/velocity to the requesting client
+        ReconcilePositionClientRpc(transform.position, rb.linearVelocity, 
+            new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new ulong[] { OwnerClientId }
+                }
+            });
+    }
 
     // Client Rpc
     // Used to be run from server to send messages to clients.
@@ -411,6 +429,8 @@ public class PlayerNetwork : NetworkBehaviour
     }
 
 
+
+    // MOVEMENT
     // Syncing movement to clients
     [ClientRpc]
     private void SyncMovementClientRpc(Vector3 newPos, ClientRpcParams rpcParams = default)
@@ -448,22 +468,6 @@ public class PlayerNetwork : NetworkBehaviour
         
         // Still update velocity immediately
         rb.linearVelocity = newVelocity;
-    }
-
-
-    // Server RPC to request authoritative position
-    [ServerRpc]
-    private void RequestServerPositionServerRpc(ServerRpcParams rpcParams = default)
-    {
-        // Server sends its authoritative position/velocity to the requesting client
-        ReconcilePositionClientRpc(transform.position, rb.linearVelocity, 
-            new ClientRpcParams
-            {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = new ulong[] { OwnerClientId }
-                }
-            });
     }
 
     // Client RPC specifically for owner reconciliation

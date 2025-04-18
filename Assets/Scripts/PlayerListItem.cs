@@ -3,131 +3,80 @@ using Unity.Services.Authentication;
 using UnityEngine;
 using UnityEngine.UI;
 
+// Manager for individual player items in UI list
 public class PlayerListItem : MonoBehaviour
-{
+{   
+    // REFERENCES //
+    private CoreManager coreManagerInstance;
+    private LobbyManager lobbyManagerInstance;
+
+
+
+    // UI ELEMENTS //
     [SerializeField] private TextMeshProUGUI playerNameText;
     [SerializeField] private TextMeshProUGUI playerPingText;
     [SerializeField] private Button readyButton;
     [SerializeField] private Image readyStatusImage;
 
-    private CoreManager coreManagerInstance;
-    private LobbyManager lobbyManagerInstance;
 
+
+    // VARIABLES
     private string playerId;
-    private ulong clientId;
-    private bool isReady = false;
-    private float updateTimer = 0f;
-    private const float UPDATE_INTERVAL = 1f; // Update ping display every second
+    private bool isReady;
 
-    public bool IsReady => isReady;
 
-    public void Initialize(string playerName, string playerId, ulong clientId = 0)
+
+    // INITIALIZATION
+    public void Initialize(string playerName, string playerId, bool isLocalPlayer)
     {
-        this.playerNameText.text = playerName;
+        // Assign references
+        coreManagerInstance = CoreManager.Instance;
+        lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
+
+        // Initial UI and variables
         this.playerId = playerId;
-        this.clientId = clientId;
+        this.playerNameText.text = playerName;
+        this.isReady = false;
+        this.playerPingText.text = "0";
 
-        // Check if this is the local player for button interactivity
-        bool isLocalPlayer = playerId == AuthenticationService.Instance.PlayerId;
-
-        // Always show the ready button, but only make it interactive for the local player
-        if (readyButton != null)
-        {
-            readyButton.gameObject.SetActive(true);
-            readyButton.interactable = isLocalPlayer;
-
-            // Only add the click listener for the local player
-            if (isLocalPlayer)
-            {
-                readyButton.onClick.AddListener(ToggleReady);
-            }
-        }
-
-        // Set initial ready status
-        if (readyStatusImage != null)
-        {
-            readyStatusImage.color = Color.red; // Default to not ready
-        }
-
-        // Set initial ping
-        UpdatePingDisplay();
+        // Enable or disable the ready button based on whether this is the local player
+        this.readyButton.interactable = isLocalPlayer;
     }
+
+
 
     void Awake()
     {
-        // Assign manager instances
-        coreManagerInstance = CoreManager.Instance;
-        lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
+        this.readyButton.onClick.AddListener(toggleReady);
     }
 
-    // Update is called once per frame
-    void Update()
+
+
+    // READY //
+    public void toggleReady()
     {
-        // Update ping display periodically
-        updateTimer += Time.deltaTime;
-        if (updateTimer >= UPDATE_INTERVAL)
-        {
-            updateTimer = 0f;
-            UpdatePingDisplay();
-        }
-    }
+        Debug.Log($"Player {playerId} pressed ready button!");
 
-    public void UpdatePingDisplay()
-    {
-        // Early return if playerId or required references are not set
-        if (string.IsNullOrEmpty(playerId))
+        // Ensure this is the local player
+        if (playerId != AuthenticationService.Instance.PlayerId)
         {
-            Debug.LogWarning("UpdatePingDisplay: playerId is null or empty!");
+            Debug.LogError($"[toggleReady] Player {playerId} tried to toggle ready status, but this is not the local player!");
             return;
         }
 
-        if (lobbyManagerInstance == null)
-        {
-            Debug.LogWarning("UpdatePingDisplay: lobbyManagerInstance is null!");
-            return;
-        }
-
-        if (playerPingText == null)
-        {
-            Debug.LogWarning("UpdatePingDisplay: playerPingText is null!");
-            return;
-        }
-
-        // Check if this is the host and handle separately
-        if (lobbyManagerInstance.IsHost && playerId == AuthenticationService.Instance?.PlayerId)
-        {
-            // For host, display "Host" instead of ping
-            playerPingText.text = "Host";
-            return;
-        }
-
-        // Otherwise, get the ping for the player from the lobby manager
-        float ping = lobbyManagerInstance.GetPlayerPing(playerId);
-
-        // Format ping display (with color based on ping value)
-        string pingText;
-        if (ping < 50)
-            pingText = $"<color=green>{ping:F0} ms</color>";
-        else if (ping < 100)
-            pingText = $"<color=yellow>{ping:F0} ms</color>";
-        else
-            pingText = $"<color=red>{ping:F0} ms</color>";
-
-        playerPingText.text = pingText;
-    }
-
-    private void ToggleReady()
-    {
+        // Swap ready status
         isReady = !isReady;
+        Debug.Log($"Player {playerId} ready status: {isReady}");
 
-        // Update visual state
-        if (readyStatusImage != null)
-        {
-            readyStatusImage.color = isReady ? Color.green : Color.red;
-        }
+        // Notify LobbyManager about the change
+        lobbyManagerInstance?.UpdateReadyStatusServerRpc(playerId, isReady);
+    }
 
-        // Here you would notify other players of ready status change
-        // This depends on your network implementation
-        // Example: GameManager.Instance.SetPlayerReady(isReady);
+    public void SetReadyStatus(bool isReady)
+    {
+        this.isReady = isReady;
+
+        // Update the ready status UI (e.g., change button color or status icon)
+        readyStatusImage.color = isReady ? Color.green : Color.red;
     }
 }

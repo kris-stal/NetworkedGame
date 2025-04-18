@@ -14,6 +14,7 @@ TagManager:
   - MenuManager
   - GameUIManager
   - GameManager
+  - PingManager
   layers:
   - Default
   - TransparentFX

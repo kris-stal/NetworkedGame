@@ -6,18 +6,22 @@ using Unity.Services.Authentication;
 using Unity.Services.Lobbies.Models;
 using System.Threading.Tasks;
 
+// UI Manager for menu
+// Handles only the UI functionality
 public class MenuUIManager : MonoBehaviour
 {   
-    public static MenuUIManager Instance { get; private set; } // Ensures that the menuManager can only be read by other scripts, but only this script can modify it.
+    // REFERENCES //
+    // Singleton public reference
+    public static MenuUIManager Instance { get; private set; }
     
-    
-    // Reference other scripts via CoreManager
+    // Other script references
     private CoreManager coreManagerInstance;
     private MenuManager menuManagerInstance;
     private LobbyManager lobbyManagerInstance;
 
 
-    // Reference UI Elements
+
+    // UI ELEMENT REFERENCES //
     // Sign In Sceen
     [SerializeField] private GameObject signinUI;
     [SerializeField] private TMPro.TMP_InputField playerNameInput;
@@ -33,16 +37,8 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private GameObject lobbyListPanel;
     [SerializeField] private GameObject lobbyListItem;
     [SerializeField] private Transform lobbyListContent;
-    private List<GameObject> instantiatedLobbyItems = new List<GameObject>();
-
-
-
-    [SerializeField] private GameObject reconnectionPanel;
-    [SerializeField] private TextMeshProUGUI reconnectionLobbyText;
-    [SerializeField] private TextMeshProUGUI reconnectionErrorText;
-    [SerializeField] private Button reconnectionButton;
-
-    // Lobby Screen
+    
+    // Lobby Screen 
     [SerializeField] private GameObject lobbyUI;
     [SerializeField] private Button startGameButton;
     [SerializeField] private Button leaveLobbyButton;
@@ -52,10 +48,16 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI playerCountText;
     [SerializeField] private Transform playerListContent;
     [SerializeField] private GameObject playerListItemPrefab;
-    private List<GameObject> instantiatedPlayerItems = new List<GameObject>();
     
 
+
+    // VARIABLES //
+    // List of displaye lobbies
+    private List<GameObject> instantiatedLobbyItems = new List<GameObject>();
+    // List of displayer players
+    private List<GameObject> instantiatedPlayerItems = new List<GameObject>();
     private string playerName;
+
 
 
     // Awake is ran when script is created - before Start
@@ -76,14 +78,16 @@ public class MenuUIManager : MonoBehaviour
         ShowSigninScreen();
     }
 
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     private async void Start()
     {
-        // Assign manager instances
+        // Assign script instances
         coreManagerInstance = CoreManager.Instance;
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
         menuManagerInstance = coreManagerInstance.menuManagerInstance;
 
+        // Check if unity services initialized (should be true from CoreManager)
         bool isUnityServiceInitialized = await coreManagerInstance.InitializeUnityServices();
         if (isUnityServiceInitialized)
         {
@@ -92,7 +96,7 @@ public class MenuUIManager : MonoBehaviour
         {
             Debug.Log($"Already signed in as {AuthenticationService.Instance.PlayerId}");
 
-            // 🔹 Retrieve stored player name
+            // Retrieve stored player name
             string savedName = await AuthenticationService.Instance.GetPlayerNameAsync();
             if (!string.IsNullOrEmpty(savedName))
             {
@@ -101,24 +105,24 @@ public class MenuUIManager : MonoBehaviour
             }
             else
             {
+                // If no name found, preset a name with a random number
                 Debug.LogWarning("No player name found, using default name.");
-                lobbyManagerInstance.SetPlayerName("Player " + Random.Range(1, 99)); // Fallback name
+                lobbyManagerInstance.SetPlayerName("Player " + Random.Range(1, 99));
             }
-
+            
+            // Signed in, proceed to main menu
             ShowMainMenuScreen();
         }
-
         else
             {
+                // Not signed in, ensure sign in screen shown
                 ShowSigninScreen();
             }
         }
-
         else 
         {
             Debug.LogError("Unity Services not initialized");
         }
-
 
 
         // Set up button listeners
@@ -131,17 +135,61 @@ public class MenuUIManager : MonoBehaviour
         startGameButton.onClick.AddListener(OnStartGameButtonClicked);
         leaveLobbyButton.onClick.AddListener(OnLeaveLobbyButtonClicked);
         startNetworkStressButton.onClick.AddListener(OnNetworkStressButtonClicked);
+
+
+        // Set up event handling
+        if (lobbyManagerInstance != null)
+        {
+            lobbyManagerInstance.OnJoinedLobby += (sender, args) => {
+                Debug.Log("Player joined lobby - updating player list");
+                ClearPlayerList();  
+                UpdatePlayerList();
+            };
+            
+            lobbyManagerInstance.OnLeftLobby += (sender, args) => {
+                Debug.Log("Player left lobby - updating player list");
+                ClearPlayerList();
+                UpdatePlayerList();
+            };
+
+            lobbyManagerInstance.OnJoinedLobbyUpdate += (sender, args) => {
+                Debug.Log("Lobby updated - updating player list");
+                ClearPlayerList();
+                UpdatePlayerList();
+            };
+        }
     }
+
 
     // Update is called once per frame
     void Update()
     {
+        // When in a lobby, keep updating lobby info (playercount)
         if (lobbyUI.activeSelf)
         {
-            UpdateLobbyUI();
+            UpdateLobbyUI(); 
         }
     }
 
+    // Update lobby UI with current information
+    private void UpdateLobbyUI()
+    {
+        if (!lobbyUI.activeSelf || menuManagerInstance == null || lobbyManagerInstance == null) return;
+
+        // Update lobby info
+        lobbyNameText.text = "Lobby: " + lobbyManagerInstance.LobbyName;
+        lobbyCodeText.text = "Code: " + lobbyManagerInstance.LobbyCode;
+        playerCountText.text = "Players: " + lobbyManagerInstance.GetPlayerCount() + "/4";
+        
+        // Show start game button only for host
+        startGameButton.gameObject.SetActive(lobbyManagerInstance.IsHost);
+        startNetworkStressButton.gameObject.SetActive(lobbyManagerInstance.IsHost);
+    }
+
+
+
+    // LOBBIES LIST UI //
+    // Search for lobbies via Lobby Service, then display in UI
     public async Task SearchAndDisplayLobbies()
     {
         // Clear previous lobby items
@@ -156,7 +204,8 @@ public class MenuUIManager : MonoBehaviour
         // Display lobbies
         DisplayLobbies(lobbies);
     }
-    
+
+    // Display lobbies in UI
     private void DisplayLobbies(List<Lobby> lobbies)
     {
         if (lobbies.Count == 0)
@@ -186,8 +235,35 @@ public class MenuUIManager : MonoBehaviour
         }
     }
 
+    // Delete all displayed lobbies in UI
+    private void ClearLobbyList()
+    {
+        foreach (GameObject item in instantiatedLobbyItems)
+        {
+            Destroy(item);
+        }
+        instantiatedLobbyItems.Clear();
+    }
+
+
+
+    // PLAYER LIST UI //
+    // Create a UI for a player in lobby
     private GameObject CreatePlayerListItem(Player player)
     {
+        Debug.Log($"Creating player item for {player.Id} with prefab: {playerListItemPrefab != null}");
+        if (playerListItemPrefab == null)
+        {
+            Debug.LogError("playerListItemPrefab is not assigned!");
+            return null;
+        }
+        
+        if (playerListContent == null)
+        {
+            Debug.LogError("playerListContent is not assigned!");
+            return null;
+        }
+
         // Instantiate the player list item prefab
         GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
         
@@ -200,246 +276,46 @@ public class MenuUIManager : MonoBehaviour
         
         // Get the player's ID
         string playerId = player.Id;
-        
-        // Get client ID for this player if available
-        ulong clientId = 0;
-        if (lobbyManagerInstance.playerClientIds.TryGetValue(playerId, out ulong id))
-        {
-            clientId = id;
-        }
-        
+
+        // Check if this is the local player
+        bool isLocalPlayer = playerId == AuthenticationService.Instance.PlayerId;
+
         // Initialize the player list item component
         PlayerListItem item = playerItem.GetComponent<PlayerListItem>();
         if (item != null)
         {
-            item.Initialize(playerName, playerId, clientId);
+            item.Initialize(playerName, playerId, isLocalPlayer);
+
+            // Initialize ready status in LobbyManager
+            if (!lobbyManagerInstance.playerReadyStatus.ContainsKey(playerId))
+            {
+                lobbyManagerInstance.playerReadyStatus[playerId] = false; // Default to not ready
+            }
         }
         
         // Add to our list for cleanup later
         instantiatedPlayerItems.Add(playerItem);
+
+
+          // Force UI refresh after adding items
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(playerListContent.GetComponent<RectTransform>());
         
         return playerItem;
     }
 
-    private void ClearLobbyList()
+    // Delete all displayed players in UI
+    private void ClearPlayerList()
     {
-        foreach (GameObject item in instantiatedLobbyItems)
+        foreach (GameObject item in instantiatedPlayerItems)
         {
             Destroy(item);
         }
-        instantiatedLobbyItems.Clear();
-    }
-    
-    private async void OnJoinLobbyClicked(string lobbyId)
-    {
-        // Call join lobby method from your lobby manager
-        bool success = await lobbyManagerInstance.JoinLobbyByIdWithRelay(lobbyId, playerName);
-        
-        if (!success)
-        {
-            Debug.LogError("Failed to join lobby");
-            return;
-        }
-
-
-        // show and clear lobby list UI
-        lobbyListPanel.SetActive(false);
-        ClearLobbyList();
-
-
-        // Show and update lobby UI
-        ShowLobbyScreen();
-        UpdateLobbyUI();
+        instantiatedPlayerItems.Clear();
     }
 
-    public void ShowSigninScreen()
-    {
-        signinUI.SetActive(true);
-        mainMenuUI.SetActive(false);
-        lobbyUI.SetActive(false);
-    }
-
-    public void ShowMainMenuScreen()
-    {
-        signinUI.SetActive(false);
-        mainMenuUI.SetActive(true);
-        lobbyUI.SetActive(false);
-
-        usernameText.text = playerName;
-    }
-    
-    public void ShowLobbyScreen()
-    {
-        signinUI.SetActive(false);
-        mainMenuUI.SetActive(false);
-        lobbyUI.SetActive(true);
-        
-        UpdateLobbyUI();
-    }
-
-    // Event handlers for main menu
-    private async void OnSigninButtonClicked()
-    {
-        if (menuManagerInstance == null)
-        {
-                Debug.LogError("Cannot sign in: menuManager not found!");
-                return;
-        }
-
-        // Ensure player enters a name
-        playerName = playerNameInput.text.Trim();
-        if (string.IsNullOrEmpty(playerName))
-        {
-            Debug.LogWarning("Please enter a player name.");
-            return;
-        }
-
-        try
-        {
-            // Authenticate if not already signed in
-            if (!AuthenticationService.Instance.IsSignedIn)
-            {
-                await menuManagerInstance.Authenticate(playerName);
-            }
-            else
-            {
-                Debug.Log("Player was already authenticated.");
-            }
-
-            // 🔹 Store the player's name in Unity's Authentication system
-            await AuthenticationService.Instance.UpdatePlayerNameAsync(playerName);
-            Debug.Log($"Player name updated to {playerName}");
-
-            // Store locally
-            lobbyManagerInstance.SetPlayerName(playerName);
-
-            // Proceed to main menu
-            ShowMainMenuScreen();
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Authentication error: {e.Message}");
-        }
-    }
-
-
-    // Event handlers for lobby selection
-    private async void OnCreateLobbyButtonClicked()
-    {
-        if (menuManagerInstance == null)
-        {
-            Debug.LogError("Cannot create lobby: menuManager not found!");
-            return;
-        }
-
-        bool created = await lobbyManagerInstance.CreateLobbyWithRelay();
-        
-        if (created)
-        {
-            lobbyListPanel.SetActive(false);
-            ShowLobbyScreen();
-        }
-    }
-
-    private async void OnJoinByCodeButtonClicked()
-    {
-        string code = codeInputBox.text.Trim();
-        
-        if (string.IsNullOrEmpty(code))
-        {
-            Debug.LogWarning("Please enter a lobby code");
-            return;
-        }
-
-        if (menuManagerInstance == null)
-        {
-            Debug.LogError("Cannot join lobby: menuManager not found!");
-            return;
-        }
-
-        bool joined = await lobbyManagerInstance.JoinLobbyByCode(code);
-        
-        if (joined)
-        {
-            lobbyListPanel.SetActive(false);
-            ShowLobbyScreen();
-            UpdateLobbyUI();
-        }
-    }
-
-    // Event handlers for lobby
-    private void OnStartGameButtonClicked()
-    {
-        if (menuManagerInstance == null)
-        {
-            Debug.LogError("Cannot start game: menuManager not found!");
-            return;
-        }
-
-        if (lobbyManagerInstance.IsHost)
-        {
-            menuManagerInstance.StartGame();
-        }
-        else
-        {
-            Debug.LogError("Only the host can start the game!");
-        }
-    }
-
-    private async void OnLeaveLobbyButtonClicked()
-    {
-        if (menuManagerInstance == null)
-        {
-            Debug.LogError("Cannot leave lobby: menuManager not found!");
-            return;
-        }
-
-        bool left = await lobbyManagerInstance.LeaveLobby();
-        
-        if (left)
-        {
-            ShowMainMenuScreen();
-        }
-    }
-
-    private void OnNetworkStressButtonClicked()
-    {
-        if (menuManagerInstance == null)
-        {
-            Debug.LogError("Cannot start stress test: menuManager not found!");
-            ShowMainMenuScreen();
-            return;
-        }
-
-        if (lobbyManagerInstance.IsHost)
-        {
-            menuManagerInstance.StartStressTest();
-        }
-        else
-        {
-            Debug.LogError("Only the host can stress test the network!");
-        }
-    }
-
-    // Update lobby UI with current information
-    private void UpdateLobbyUI()
-    {
-        if (!lobbyUI.activeSelf || menuManagerInstance == null || lobbyManagerInstance == null) return;
-
-        // Update lobby info
-        lobbyNameText.text = "Lobby: " + lobbyManagerInstance.LobbyName;
-        lobbyCodeText.text = "Code: " + lobbyManagerInstance.LobbyCode;
-        playerCountText.text = "Players: " + lobbyManagerInstance.GetPlayerCount() + "/4";
-        
-        // Show start game button only for host
-        startGameButton.gameObject.SetActive(lobbyManagerInstance.IsHost);
-        startNetworkStressButton.gameObject.SetActive(lobbyManagerInstance.IsHost);
-        
-        // Update player list
-        UpdatePlayerList();
-    }
-
-    private void UpdatePlayerList()
+    // Update entire player list
+    public void UpdatePlayerList()
     {
         Debug.Log("Current lobby players:");
 
@@ -449,7 +325,7 @@ public class MenuUIManager : MonoBehaviour
             return;
         }
 
-        Lobby currentLobby = lobbyManagerInstance.HostLobby ?? lobbyManagerInstance.JoinedLobby;
+        Lobby currentLobby = lobbyManagerInstance.CurrentLobby;
         if (currentLobby != null && currentLobby.Players != null)
         {
             foreach (var player in currentLobby.Players)
@@ -474,15 +350,9 @@ public class MenuUIManager : MonoBehaviour
             Debug.LogWarning("UpdatePlayerList: Lobby Players list is null");
             return;
         }
-        
-        Debug.Log($"UpdatePlayerList: Found {currentLobby.Players.Count} players in lobby {currentLobby.Name}");
 
         // Clear current player list
-        foreach (GameObject item in instantiatedPlayerItems)
-        {
-            Destroy(item);
-        }
-        instantiatedPlayerItems.Clear();
+        ClearPlayerList();
         
         // Track processed player IDs to avoid duplicates
         HashSet<string> processedPlayerIds = new HashSet<string>();
@@ -521,9 +391,217 @@ public class MenuUIManager : MonoBehaviour
                 Debug.LogWarning($"Player {player.Id} is missing name data");
             }
             
-            CreatePlayerListItem(player);
+            GameObject playerItem = CreatePlayerListItem(player);
+            // Update the ready status UI
+            PlayerListItem item = playerItem.GetComponent<PlayerListItem>();
+            if (item != null && lobbyManagerInstance.playerReadyStatus.TryGetValue(player.Id, out bool isReady))
+            {
+                item.SetReadyStatus(isReady);
+            }
         }
         
         Debug.Log($"UpdatePlayerList: Created {processedPlayerIds.Count} player items");
+    }
+
+
+
+    // UI SCREEN MANAGEMENT //
+    public void ShowSigninScreen()
+    {
+        signinUI.SetActive(true);
+        mainMenuUI.SetActive(false);
+        lobbyUI.SetActive(false);
+    }
+
+    public void ShowMainMenuScreen()
+    {
+        signinUI.SetActive(false);
+        mainMenuUI.SetActive(true);
+        lobbyUI.SetActive(false);
+
+        usernameText.text = playerName;
+    }
+    
+    public void ShowLobbyScreen()
+    {
+        signinUI.SetActive(false);
+        mainMenuUI.SetActive(false);
+        lobbyUI.SetActive(true);
+        
+        UpdateLobbyUI();
+        UpdatePlayerList();
+    }
+
+
+
+    // BUTTON EVENTS //
+    // Sign in screen handlers
+    private async void OnSigninButtonClicked()
+    {
+        if (menuManagerInstance == null)
+        {
+                Debug.LogError("Cannot sign in: menuManager not found!");
+                return;
+        }
+
+        // Ensure player enters a name
+        playerName = playerNameInput.text.Trim();
+        if (string.IsNullOrEmpty(playerName))
+        {
+            Debug.LogWarning("Please enter a player name.");
+            return;
+        }
+
+        try
+        {
+            // Authenticate if not already signed in
+            if (!AuthenticationService.Instance.IsSignedIn)
+            {
+                await menuManagerInstance.Authenticate(playerName);
+            }
+            else
+            {
+                Debug.Log("Player was already authenticated.");
+            }
+
+            // 🔹 Store the player's name in Unity's Authentication system
+            await AuthenticationService.Instance.UpdatePlayerNameAsync(playerName);
+            Debug.Log($"Player name: {playerName}");
+
+            // Store locally
+            lobbyManagerInstance.SetPlayerName(playerName);
+
+            // Proceed to main menu
+            ShowMainMenuScreen();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Authentication error: {e.Message}");
+        }
+    }
+
+    // Main menu screen handlers
+    private async void OnCreateLobbyButtonClicked()
+    {
+        if (menuManagerInstance == null)
+        {
+            Debug.LogError("Cannot create lobby: menuManager not found!");
+            return;
+        }
+
+        bool created = await lobbyManagerInstance.CreateLobby();
+        
+        if (created)
+        {
+            lobbyListPanel.SetActive(false);
+            ShowLobbyScreen();
+        }
+    }
+
+    private async void OnJoinByCodeButtonClicked()
+    {
+        string code = codeInputBox.text.Trim();
+        
+        if (string.IsNullOrEmpty(code))
+        {
+            Debug.LogWarning("Please enter a lobby code");
+            return;
+        }
+
+        if (menuManagerInstance == null)
+        {
+            Debug.LogError("Cannot join lobby: menuManager not found!");
+            return;
+        }
+
+        bool joined = await lobbyManagerInstance.JoinLobbyByCode(code);
+        
+        if (joined)
+        {
+            lobbyListPanel.SetActive(false);
+            ShowLobbyScreen();
+            UpdateLobbyUI();
+        }
+    }
+
+    private async void OnJoinLobbyClicked(string lobbyId)
+    {
+        // Call join lobby method from your lobby manager
+        bool success = await lobbyManagerInstance.JoinLobbyById(lobbyId);
+        
+        if (!success)
+        {
+            Debug.LogError("Failed to join lobby");
+            return;
+        }
+
+        // show and clear lobby list UI
+        lobbyListPanel.SetActive(false);
+        ClearLobbyList();
+
+        // Show and update lobby UI
+        ShowLobbyScreen();
+        UpdateLobbyUI();
+    }
+
+    // Lobby screen handlers
+    private void OnStartGameButtonClicked()
+    {
+        if (menuManagerInstance == null)
+        {
+            Debug.LogError("Cannot start game: menuManager not found!");
+            return;
+        }
+
+        if (!lobbyManagerInstance.IsHost)
+        {
+            Debug.LogError("Only the host can start the game!");
+            return;
+        }
+
+        // Check if all players are ready
+        if (!lobbyManagerInstance.AreAllPlayersReady())
+        {
+            Debug.LogWarning("Cannot start game: Not all players are ready!");
+            return;
+        }
+
+        // Start the game
+        menuManagerInstance.StartGame();
+    }
+
+    private async void OnLeaveLobbyButtonClicked()
+    {
+        if (menuManagerInstance == null)
+        {
+            Debug.LogError("Cannot leave lobby: menuManager not found!");
+            return;
+        }
+
+        bool left = await lobbyManagerInstance.LeaveLobby();
+        
+        if (left)
+        {
+            ShowMainMenuScreen();
+        }
+    }
+
+    private void OnNetworkStressButtonClicked()
+    {
+        if (menuManagerInstance == null)
+        {
+            Debug.LogError("Cannot start stress test: menuManager not found!");
+            ShowMainMenuScreen();
+            return;
+        }
+
+        if (lobbyManagerInstance.IsHost)
+        {
+            menuManagerInstance.StartStressTest();
+        }
+        else
+        {
+            Debug.LogError("Only the host can stress test the network!");
+        }
     }
 }

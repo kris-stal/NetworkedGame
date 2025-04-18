@@ -3,20 +3,25 @@ using UnityEngine.UI;
 using TMPro;
 using Unity.Services.Lobbies.Models;
 
+// Manager for individual lobby items in UI list
 public class LobbyListItem : MonoBehaviour
 {
+    // UI ELEMENTS //
     [SerializeField] private TextMeshProUGUI lobbyNameText;
     [SerializeField] private TextMeshProUGUI playerCountText;
     [SerializeField] private Button joinButton;
     
-    private string lobbyId;
     
+
+    // VARIABLES //
+    // This is for menu UI manager to access
     public Button JoinButton => joinButton;
     
+
+    
+    // TO INSTANTIATE //
     public void Initialize(Lobby lobby)
     {
-        lobbyId = lobby.Id;
-        
         // Set lobby name - use host's name or lobby name if available
         string lobbyName = "Unknown Lobby";
         if (lobby.Players.Count > 0)

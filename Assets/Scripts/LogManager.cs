@@ -40,7 +40,7 @@ public class LogManager : MonoBehaviour
             // Append to log file
             File.AppendAllText(logPath, entry);
         }
-        catch (Exception e)
+        catch (Exception)
         {
             // Fail silently
         }

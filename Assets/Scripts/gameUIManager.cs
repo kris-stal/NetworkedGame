@@ -2,22 +2,21 @@ using UnityEngine;
 using Unity.Netcode;
 using TMPro;
 using UnityEngine.UI;
-using System;
 using Unity.Multiplayer.Tools.NetStatsMonitor;
+
+// Manager for handling in game UI
+// Handles player ping, score, countdown and tab menu
 public class GameUIManager : NetworkBehaviour
 {   
+    // REFERENCES //
     // Singleton Pattern
     public static GameUIManager Instance { get; private set; }
 
-    // Reference other scripts via CoreManager
+    // Reference other scripts
     private CoreManager coreManagerInstance;
     private GameManager gameManagerInstance;
 
-    private float lastResolutionPing = -5;
-
-
-    // Variables
-    // In Game UI
+    // UI elements references
     [SerializeField] private GameObject gameUI;
     [SerializeField] private TextMeshProUGUI player1ScoreText;
     [SerializeField] private TextMeshProUGUI player2ScoreText;
@@ -43,6 +42,10 @@ public class GameUIManager : NetworkBehaviour
     [SerializeField] private Button resumeGameButton;
     [SerializeField] private Button leaveGameButton;
 
+
+
+    // VARIABLES //
+    private float lastResolutionPing = -5;
 
 
     // Awake is called when the script instance is loaded, before Start
@@ -75,6 +78,7 @@ public class GameUIManager : NetworkBehaviour
         });
     }
 
+    // Start is called once before the first execution of Update after the MonoBehaviour is created, after Awake
     private void Start()
     {
         // Hide countdown and winner panels initially
@@ -92,8 +96,6 @@ public class GameUIManager : NetworkBehaviour
         }
     }
 
-
-    // Start is called once before the first execution of Update after the MonoBehaviour is created, after Awake
     private void Update()
     {
         if (gameManagerInstance == null || NetworkManager.Singleton == null) return;
@@ -138,37 +140,11 @@ public class GameUIManager : NetworkBehaviour
         player2ScoreText.text = gameManagerInstance.GetPlayer2Score().ToString();
     }
 
-    // Toggle display of the high ping warning message
-    public void toggleHighPingWarning(bool isActive)
-    {
-        if (highPingWarningText.gameObject.activeSelf != isActive)
-        {
-            highPingWarningText.gameObject.SetActive(isActive);
-        }
-    }
 
-    public void changeResolution(float ping)
-    {
-        if (Mathf.Abs(ping - lastResolutionPing) < 10) return; // Avoid small fluctuations
-        lastResolutionPing = ping;
 
-        if (ping > 100)
-        {
-            Screen.SetResolution(640, 360, FullScreenMode.FullScreenWindow);
-        }
-        else if (ping > 50)
-        {
-            Screen.SetResolution(1280, 720, FullScreenMode.FullScreenWindow);
-        }
-        else
-        {
-            Screen.SetResolution(1920, 1080, FullScreenMode.FullScreenWindow);
-        }
-        Debug.Log($"Resolution changed to: {Screen.width} x {Screen.height}");
-    }
 
-        // Methods for countdown display
-    public void ShowCountdown(bool show)
+    // COUNTDOWNS
+   public void ShowCountdown(bool show)
     {
         if (countdownPanel != null)
         {
@@ -183,8 +159,11 @@ public class GameUIManager : NetworkBehaviour
             countdownText.text = text;
         }
     }
-    
-    // Methods for winner display
+
+
+
+    // UI MANAGEMENT //
+    // Game screen management
     public void ShowWinnerScreen(bool show)
     {
         if (winnerPanel != null)
@@ -202,8 +181,49 @@ public class GameUIManager : NetworkBehaviour
             winnerPanel.SetActive(true);
         }
     }
+
+    // Ping screen management
+    public void toggleHighPingWarning(bool isActive)
+    {
+        if (highPingWarningText.gameObject.activeSelf != isActive)
+        {
+            highPingWarningText.gameObject.SetActive(isActive);
+        }
+    }
+
+    public void changeResolution(float ping)
+    {
+        if (Mathf.Abs(ping - lastResolutionPing) < 10) return; // Avoid small fluctuations
+        lastResolutionPing = ping;
+
+        Vector2Int currentResolution = new Vector2Int(Screen.width, Screen.height);
+        Vector2Int targetResolution;
+
+        // Determine target resolution based on ping
+        if (ping > 100)
+        {
+            targetResolution = new Vector2Int(640, 360);
+        }
+        else if (ping > 50)
+        {
+            targetResolution = new Vector2Int(1280, 720);
+        }
+        else
+        {
+            targetResolution = new Vector2Int(1920, 1080);
+        }
+
+        // Only change if needed
+        if (currentResolution != targetResolution)
+        {
+            Screen.SetResolution(targetResolution.x, targetResolution.y, FullScreenMode.FullScreenWindow);
+            Debug.Log($"Resolution changed to: {targetResolution.x} x {targetResolution.y}");
+        }
+    }
+
+
     
-    // Button click handler for new game
+    // BUTTON HANDLERS //
     private void OnNewGameButtonClicked()
     {
         if (gameManagerInstance != null)
@@ -212,5 +232,4 @@ public class GameUIManager : NetworkBehaviour
             ShowWinnerScreen(false);
         }
     }
-    
 }

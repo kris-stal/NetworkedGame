@@ -1,22 +1,21 @@
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Unity.Services.Core;
 using Unity.Services.Authentication;
 using System.Threading.Tasks;
 
+// Manager for functionality in the menu
+// Handles launching games
 public class MenuManager : MonoBehaviour
 {
+    // REFERENCES
     // Singleton pattern
     public static MenuManager Instance { get; private set; }
 
-    // Reference other scripts via CoreManager
+    // Reference other scripts
     private CoreManager coreManagerInstance;
     private MenuUIManager menuUIManagerInstance;
     private LobbyManager lobbyManagerInstance;
-
-    // Private Variables only this script accesses
-    private string playerName;
     
 
     // Awake is ran when script is created - before Start
@@ -32,23 +31,24 @@ public class MenuManager : MonoBehaviour
 
         // Else, there is no other instance so set this as the instance
         Instance = this;
-
     }
+
 
     // Start is called before first frame update, after Awake
     private void Start()
     {
-        // Assign manager instances
+        // Assign script references
         coreManagerInstance = CoreManager.Instance;
         menuUIManagerInstance = coreManagerInstance.menuUIManagerInstance;
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
 
         // Always show sign-in screen first
         menuUIManagerInstance.ShowSigninScreen();
-        
-        Debug.Log("Showing sign-in screen. User must sign in manually.");
     }
 
+
+
+    // AUTHENTICATION //
     public async Task Authenticate(string playerName)
     {
     try
@@ -60,10 +60,9 @@ public class MenuManager : MonoBehaviour
                 return;
             }
 
-            AuthenticationService.Instance.SignedIn += async () =>
+            AuthenticationService.Instance.SignedIn +=  () =>
             {
                 Debug.Log($"Signed in as {AuthenticationService.Instance.PlayerId}");
-                await lobbyManagerInstance.SearchAndRefreshLobbies(); // Refresh lobbies after sign-in
             };
 
             await AuthenticationService.Instance.SignInAnonymouslyAsync();
@@ -76,7 +75,10 @@ public class MenuManager : MonoBehaviour
         }
     }
 
-    // Start game as host
+
+
+    // STARTING GAME //
+    // Launch game
     public async void StartGame()
     {
         if (lobbyManagerInstance.IsHost)
@@ -135,6 +137,7 @@ public class MenuManager : MonoBehaviour
         NetworkManager.Singleton.SceneManager.LoadScene("BallArena", LoadSceneMode.Single);
     }
 
+    // Launch network stress test
     public void StartStressTest()
     {
         if (lobbyManagerInstance.IsHost)
@@ -157,5 +160,14 @@ public class MenuManager : MonoBehaviour
         {
             Debug.LogError("Cannot start stress test: not a host.");
         }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void StartStressTestRpc()
+    {
+        if (!NetworkManager.Singleton.IsHost) return;  // Only the host can load the scene
+
+        Debug.Log("Host is loading Network Stress Test scene...");
+        NetworkManager.Singleton.SceneManager.LoadScene("NetworkStressTest", LoadSceneMode.Single);
     }
 }

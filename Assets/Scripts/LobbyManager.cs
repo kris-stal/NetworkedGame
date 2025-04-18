@@ -9,33 +9,38 @@ using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using Unity.Services.Relay;
 using Unity.Services.Relay.Models;
+using System.Collections;
 
+// Manager for Lobby Service
+// Handles all lobby functionality (lobbies/players in the lobby)
+// Including creating, searching, joining and leaving lobbies.
 public class LobbyManager : MonoBehaviour
-{
+{   
+    // REFERENCES //
+    // Singleton public reference
     public static LobbyManager Instance { get; private set; }
 
+    // Other script references
+    private CoreManager coreManagerInstance;
+    private MenuUIManager menuUIManagerInstance;
+
+    // VARIABLES //
     // Lobby-related variables
     private Lobby hostLobby;
     private Lobby joinedLobby;
     private float heartbeatTimer;
-    private float lobbyUpdateTimer;
     private string playerName;
+    public Dictionary<string, bool> playerReadyStatus = new Dictionary<string, bool>();
+
     
     // Constants
-    private const float lobbyUpdateTimerMax = 2f;
-    private float pingMeasurementTimer = 0f;
-    private const float PING_MEASUREMENT_INTERVAL = 2f;
+    private const float LOBBY_HEARTBEAT_INTERVAL = 15f;
     
     // Public variables
-    public Lobby HostLobby => hostLobby;
-    public Lobby JoinedLobby => joinedLobby;
-    public string LobbyName => (hostLobby != null) ? hostLobby.Name : (joinedLobby != null) ? joinedLobby.Name : "";
-    public string LobbyCode => (hostLobby != null) ? hostLobby.LobbyCode : (joinedLobby != null) ? joinedLobby.LobbyCode : "";
+    public Lobby CurrentLobby => hostLobby ?? joinedLobby;
+    public string LobbyName => CurrentLobby?.Name ?? "";
+    public string LobbyCode => CurrentLobby?.LobbyCode ?? "";
     public bool IsHost => hostLobby != null;
-
-    // Dictionary
-    public Dictionary<string, float> playerPings = new Dictionary<string, float>();
-    public Dictionary<string, ulong> playerClientIds = new Dictionary<string, ulong>(); 
 
     // Events
     public event EventHandler<LobbyEventArgs> OnLeftLobby;
@@ -44,8 +49,8 @@ public class LobbyManager : MonoBehaviour
     public event EventHandler<LobbyEventArgs> OnKickedFromLobby;
     public class LobbyEventArgs : EventArgs {
         public Lobby lobby;
-        public string PlayerId {get; set;}
-        public string PlayerName {get; set;}
+        public string PlayerId { get; set; }
+        public string PlayerName { get; set; }
     }
 
     public event EventHandler<OnLobbyListChangedEventArgs> OnLobbyListChanged;
@@ -53,181 +58,49 @@ public class LobbyManager : MonoBehaviour
         public List<Lobby> lobbyList;
     }
 
-    private bool hasRegisteredWithHost = false;
 
-
-
-    // Awake is called first, before start
     private void Awake()
     {
-        // If theres an instance already which is not this one
+        // Singleton pattern
         if (Instance != null && Instance != this) 
         {
-            Destroy(gameObject); // destroy this one to prevent duplicates
+            Destroy(gameObject);
             return;
         }
 
-        // Else, there is no other instance so set this as the instance
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-
         // Initialize timers
-        heartbeatTimer = 15f;
-        lobbyUpdateTimer = 3f;
+        heartbeatTimer = LOBBY_HEARTBEAT_INTERVAL;
     }
 
     private void Start()
     {
+        // Get script instances from CoreManager
+        coreManagerInstance = CoreManager.Instance;
+        menuUIManagerInstance = coreManagerInstance.menuUIManagerInstance;
+        
         // Subscribe to events
         OnJoinedLobby += HandleJoinedLobby;
 
-        NetworkManager.Singleton.OnClientConnectedCallback += (clientId) =>
+        // NetworkManager Events
+        if (NetworkManager.Singleton != null)
         {
-            Debug.Log($"Successfully connected to host as Client-{clientId}");
-
-            // For local client connection
-            if (clientId == NetworkManager.Singleton.LocalClientId)
-            {
-                string localPlayerId = AuthenticationService.Instance.PlayerId;
-
-                // Register player with both IDs
-                RegisterPlayer(localPlayerId, clientId);
-
-                // If client (not host), inform the host about our mapping
-                if (!IsHost && !hasRegisteredWithHost)
-                {
-                    hasRegisteredWithHost = true;
-                    Debug.Log($"Client informing host about mapping: {localPlayerId} -> {clientId}");
-                    NotifyHostAboutPlayerMapping_ServerRpc(localPlayerId);
-                }
-            }
-            else if (IsHost)
-            {
-                // Remote client connected to host - we'll register them once they identify themselves via RPC
-                Debug.Log($"Remote client {clientId} connected to host, awaiting player identification");
-            }
-
-            // 🔍 Debug: Print full mapping on connect
-            Debug.Log("Current playerClientIds mapping:");
-            foreach (var kvp in playerClientIds)
-            {
-                Debug.Log($"PlayerID: {kvp.Key} -> ClientID: {kvp.Value}");
-            }
-
-            // 🔍 Debug: Print all tracked pings too
-            Debug.Log("Current playerPings:");
-            foreach (var kvp in playerPings)
-            {
-                Debug.Log($"PlayerID: {kvp.Key} -> Ping: {kvp.Value}ms");
-            }
-        };
-
-        NetworkManager.Singleton.OnClientDisconnectCallback += (clientId) =>
-        {
-            Debug.LogError($"Disconnected from host. Client ID: {clientId}");
-
-            UnRegisterPlayer(clientId);
-        };
+            NetworkManager.Singleton.OnClientConnectedCallback += HandleClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback += HandleClientDisconnected;
+        }
     }
 
     private void Update()
     {
-        // Handle lobby heartbeat and updates
+        // Handle lobby heartbeat
         HandleLobbyHeartbeat();
-        HandleLobbyPollForUpdates(); 
-
-        // Add ping measurement
-        // Check if the instance is the host or a client
-        if (NetworkManager.Singleton.IsHost)
-        {
-            // If we are the host, run the host ping measurement
-            MeasureAndUpdatePingsForHost();
-        }
-        else if (NetworkManager.Singleton.IsConnectedClient)
-        {
-            // If we are a client, run the client ping measurement
-            MeasureAndUpdatePingForClient();
-        }
     }
-
-    // Setter for player name
-    public void SetPlayerName(string name)
-    {
-        playerName = name;
-    }
-    private void MeasureAndUpdatePingsForHost()
-    {
-        // Only measure ping if we're connected as a host
-        if (!NetworkManager.Singleton.IsHost)
-            return;
-
-        pingMeasurementTimer += Time.deltaTime;
-
-        if (pingMeasurementTimer < PING_MEASUREMENT_INTERVAL)
-            return;
-
-        pingMeasurementTimer = 0f;
-
-        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        if (transport == null)
-            return;
-
-        // Measure ping for all connected clients
-        foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
-        {
-            // Skip self (host)
-            if (clientId == NetworkManager.Singleton.LocalClientId)
-                continue;
-
-            float pingMs = transport.GetCurrentRtt(clientId) * 1000f;
-            string playerId = GetPlayerIdByClientId(clientId);
-
-            if (!string.IsNullOrEmpty(playerId))
-                UpdatePlayerPing(playerId, pingMs);
-        }
-
-        // Optional: Set the host's own ping to 0
-        string hostPlayerId = GetPlayerIdByClientId(NetworkManager.Singleton.LocalClientId);
-        if (!string.IsNullOrEmpty(hostPlayerId))
-            UpdatePlayerPing(hostPlayerId, 0f);
-    }
-
-    private void MeasureAndUpdatePingForClient()
-    {
-        if (!NetworkManager.Singleton.IsConnectedClient)
-            return;
-
-        pingMeasurementTimer += Time.deltaTime;
-
-        if (pingMeasurementTimer < PING_MEASUREMENT_INTERVAL)
-            return;
-
-        pingMeasurementTimer = 0f;
-
-        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        if (transport == null)
-            return;
-
-        // Measure RTT to the host
-        float pingMs = transport.GetCurrentRtt(NetworkManager.ServerClientId) * 1000f;
-
-        // Update *client’s* own ping
-        string localPlayerId = GetPlayerIdByClientId(NetworkManager.Singleton.LocalClientId);
-        if (!string.IsNullOrEmpty(localPlayerId))
-            UpdatePlayerPing(localPlayerId, pingMs);
-
-        // Update *host’s* ping (from client's perspective) — same RTT
-        string hostPlayerId = GetPlayerIdByClientId(NetworkManager.ServerClientId);
-        if (!string.IsNullOrEmpty(hostPlayerId))
-            UpdatePlayerPing(hostPlayerId, pingMs);
-    }
-
-
-
-
 
     // Heartbeat function to keep server alive
+    // Unity's Lobby Service automatically deletes lobbies when inactive for 30 seconds.
+    // This heartbeat pings the lobby service every 15 seconds to keep it alive.
     private async void HandleLobbyHeartbeat()
     {
         if (hostLobby != null)
@@ -235,75 +108,141 @@ public class LobbyManager : MonoBehaviour
             heartbeatTimer -= Time.deltaTime;
             if (heartbeatTimer < 0f)
             {
-                float heartbeatTimerMax = 15f;
-                heartbeatTimer = heartbeatTimerMax;
+                heartbeatTimer = LOBBY_HEARTBEAT_INTERVAL; // 15 seconds
 
-                await LobbyService.Instance.SendHeartbeatPingAsync(hostLobby.Id);
-                Debug.Log("Sent heartbeat ping");
+                try
+                {
+                    await LobbyService.Instance.SendHeartbeatPingAsync(hostLobby.Id);
+                    Debug.Log("Sent heartbeat ping");
+                }
+                catch (LobbyServiceException e)
+                {
+                    Debug.LogError($"Heartbeat failed: {e.Message}");
+                }
             }
         }
     }
 
-    // Update function for clients
-    private async void HandleLobbyPollForUpdates()
+
+
+    // EVENT HANDLING //
+    // Client Connected / disconnected
+    private void HandleClientConnected(ulong clientId)
     {
-        if (joinedLobby != null)
+        Debug.Log($"Client connected: {clientId}");
+
+        // If this is the local client connection
+        if (clientId == NetworkManager.Singleton.LocalClientId)
         {
-            lobbyUpdateTimer -= Time.deltaTime;
-            if (lobbyUpdateTimer < 0f)
+            string localPlayerId = AuthenticationService.Instance.PlayerId;
+            Debug.Log($"Local connection from ClientID: {clientId}, PlayerID: {localPlayerId}");
+        }
+        else if (IsHost)
+        {
+            // A remote client connected to the host
+            Debug.Log($"Remote connection to host from ClientID: {clientId}");
+
+            // So update lobby after a delay to allow for correct lobby players after connection
+            StartCoroutine(UpdateLobbyAndNotifyUI());
+        }
+    }
+
+    private async void HandleClientDisconnected(ulong clientId)
+    {
+        Debug.Log($"Client disconnected: {clientId}");
+
+        // If this is the local client, check if we were kicked from the lobby
+        if (clientId == NetworkManager.Singleton.LocalClientId && joinedLobby != null)
+        {
+            try
             {
-                lobbyUpdateTimer = lobbyUpdateTimerMax;
-
-                joinedLobby = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id);
-
-                OnJoinedLobbyUpdate?.Invoke(this, new LobbyEventArgs { lobby = joinedLobby });
-
-                if (!IsPlayerInLobby()) {
-                    // Player was kicked out of this lobby
+                // Check if we're still in the lobby
+                Lobby currentLobbyState = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id);
+                
+                if (!IsPlayerInLobby(currentLobbyState))
+                {
                     Debug.Log("Kicked from Lobby!");
-
-                    OnKickedFromLobby?.Invoke(this, new LobbyEventArgs { lobby = joinedLobby });
-
+                    OnKickedFromLobby?.Invoke(this, new LobbyEventArgs { lobby = currentLobbyState });
                     joinedLobby = null;
                 }
             }
-        }
-    }
-
-    
-    // Check if player in lobby (true)
-    private bool IsPlayerInLobby() {
-        if (joinedLobby != null && joinedLobby.Players != null) {
-            foreach (Player player in joinedLobby.Players) {
-                if (player.Id == AuthenticationService.Instance.PlayerId) {
-                    // This player is in this lobby
-                    return true;
-                }
+            catch (LobbyServiceException e)
+            {
+                // If we can't get the lobby, we might have been kicked or the lobby was deleted
+                Debug.Log($"Lobby no longer exists - likely kicked or lobby closed, exception: {e}");
+                OnKickedFromLobby?.Invoke(this, new LobbyEventArgs { lobby = null });
+                joinedLobby = null;
             }
         }
-        return false;
     }
 
-    public async Task<bool> CreateLobbyWithRelay()
+    // Update lobby data with a delay
+    private IEnumerator UpdateLobbyAndNotifyUI()
+    {
+        // Use a coroutine to handle the async operation
+        Task<Lobby> updateTask = Task.Run(async () => {
+            try {
+                // Wait briefly for Unity services to update
+                await Task.Delay(500);
+                return await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id);
+            } 
+            catch (Exception e) {
+                Debug.LogError($"Error updating lobby: {e.Message}");
+                return joinedLobby;
+            }
+        });
+        
+        // Wait for the task to complete
+        while (!updateTask.IsCompleted)
+        {
+            yield return null;
+        }
+        
+        // Update the lobby reference with fresh data
+        if (updateTask.IsCompletedSuccessfully)
+        {
+            joinedLobby = updateTask.Result;
+            
+            // Now invoke the event with updated data
+            OnJoinedLobbyUpdate?.Invoke(this, new LobbyEventArgs { lobby = joinedLobby });
+        }
+    }
+
+    // Handle joining lobby event - for lobby service not actual connection
+    private void HandleJoinedLobby(object sender, LobbyEventArgs e)
+    {
+        Debug.Log($"Player joined lobby: {e.PlayerName}");
+
+        // Log current lobby players
+        if (joinedLobby != null)
+        {
+            PrintPlayers(joinedLobby);
+        }
+    }
+
+
+
+    // LOBBY MANAGEMENT //
+    public async Task<bool> CreateLobby()
     {
         try
         {
             string lobbyName = playerName + "'s Lobby";
             int maxPlayers = 4;
 
-            // 1. Create a Relay allocation
+            // (RELAY) Create a Relay allocation
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
             
-            // 2. Get the join code for clients to use
+            // (RELAY) Get the join code for clients to use
             string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
             
-            // 3. Get the Relay server's endpoint for display purposes
+            // (RELAY) Get the Relay server's endpoint
             var relayServerEndpoint = allocation.ServerEndpoints[0];
             string hostIP = relayServerEndpoint.Host;
             int hostPort = relayServerEndpoint.Port;
             Debug.Log($"Relay server info - IP: {hostIP}, Port: {hostPort}, JoinCode: {joinCode}");
 
-            // 4. Configure the transport with the Relay data
+            // (NGO) Configure the transport with the Relay data
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
             if (transport == null)
             {
@@ -311,11 +250,11 @@ public class LobbyManager : MonoBehaviour
                 return false;
             }
             
-            // This is the critical part - setting up the relay on the transport
+            // (NGO) Setting up the relay on the transport
             var relayServerData = AllocationUtils.ToRelayServerData(allocation, "dtls");
             transport.SetRelayServerData(relayServerData);
             
-            // 5. Create Lobby with relay join code
+            // Create Lobby with relay join code
             CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
             {
                 IsPrivate = false,
@@ -327,12 +266,12 @@ public class LobbyManager : MonoBehaviour
                 }
             };
 
-            // Create the lobby
+            // (LOBBY SERVICE) Create the lobby
             Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
             hostLobby = lobby;
             joinedLobby = lobby;
 
-            // 6. Start as host
+            // (NGO) Start as host
             if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
             {
                 bool success = NetworkManager.Singleton.StartHost();
@@ -352,7 +291,6 @@ public class LobbyManager : MonoBehaviour
             return false;
         }
     }
-    
 
     public async Task<List<Lobby>> SearchAndRefreshLobbies()
     {
@@ -379,7 +317,7 @@ public class LobbyManager : MonoBehaviour
             QueryResponse queryResponse = await LobbyService.Instance.QueryLobbiesAsync(queryOptions);
             Debug.Log($"Found {queryResponse.Results.Count} lobbies");
 
-            // Notify UI or other listeners
+            // Notify UI
             OnLobbyListChanged?.Invoke(this, new OnLobbyListChangedEventArgs { lobbyList = queryResponse.Results });
 
             return queryResponse.Results;
@@ -390,29 +328,103 @@ public class LobbyManager : MonoBehaviour
             return new List<Lobby>();
         }
     }
-
-    public async Task<bool> JoinLobbyByIdWithRelay(string lobbyId, string playerName)
+    
+    public async Task<bool> JoinLobbyById(string lobbyId)
     {
         try
         {
             // Join the lobby
-            var joinOptions = new JoinLobbyByIdOptions
+            JoinLobbyByIdOptions joinLobbyByIdOptions = new JoinLobbyByIdOptions
             {
-                Player = new Player
-                {
-                    Data = new Dictionary<string, PlayerDataObject>
-                    {
-                        { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Public, playerName) }
-                    }
-                }
+                Player = GetPlayer()
             };
 
-            // Join the lobby
-            Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, joinOptions);
+            // (LOBBY SERVICE) Join the lobby
+            Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, joinLobbyByIdOptions);
             this.joinedLobby = joinedLobby;
 
             Debug.Log($"Successfully joined lobby as {playerName}");
 
+            // (RELAY) Get the relay join code from the lobby data
+            if (joinedLobby.Data.TryGetValue("RelayJoinCode", out DataObject relayJoinCodeData))
+            {
+                string joinCode = relayJoinCodeData.Value;
+                Debug.Log($"Retrieved relay join code: {joinCode}");
+
+                // (RELAY) Join the relay with the join code
+                JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
+                
+                // (NGO) Set up the transport with the relay data
+                var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+                if (transport != null)
+                {
+                    var relayServerData = AllocationUtils.ToRelayServerData(joinAllocation, "dtls");
+                    transport.SetRelayServerData(relayServerData);
+                    
+                    Debug.Log("Configured transport with relay data, connecting as client...");
+                }
+                else
+                {
+                    Debug.LogError("Transport component not found on NetworkManager!");
+                    return false;
+                }
+
+                // (NGO) Start the client
+                if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+                {
+                    bool success = NetworkManager.Singleton.StartClient();
+                    if (!success)
+                    {
+                        Debug.LogError("Failed to start as client!");
+                        return false;
+                    }
+                    Debug.Log("Started as network client through Relay");
+                }
+
+                 // After successfully joining a lobby, notify UI
+                OnJoinedLobby?.Invoke(this, new LobbyEventArgs { 
+                    lobby = joinedLobby,
+                    PlayerId = AuthenticationService.Instance.PlayerId,
+                    PlayerName = playerName
+                });
+
+                return true;
+            }
+            else
+            {
+                Debug.LogError("Failed to find relay join code in lobby data");
+                return false;
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Failed to join lobby with relay: {e.Message}");
+            return false;
+        }
+    }
+
+   public async Task<bool> JoinLobbyByCode(string lobbyCode)
+    {
+        try
+        {
+            JoinLobbyByCodeOptions joinLobbyByCodeOptions = new JoinLobbyByCodeOptions
+            {
+                Player = GetPlayer()
+            };
+
+            Lobby lobby = await LobbyService.Instance.JoinLobbyByCodeAsync(lobbyCode, joinLobbyByCodeOptions);
+            joinedLobby = lobby;
+
+            // Output that joined lobby
+            Debug.Log("Joined lobby with code " + lobbyCode);
+
+            // Output player count
+            PrintPlayers(joinedLobby);
+
+            // Save this lobby as last joined lobby
+            PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
+            PlayerPrefs.Save();
+            
             // Get the relay join code from the lobby data
             if (joinedLobby.Data.TryGetValue("RelayJoinCode", out DataObject relayJoinCodeData))
             {
@@ -448,7 +460,14 @@ public class LobbyManager : MonoBehaviour
                     }
                     Debug.Log("Started as network client through Relay");
                 }
-
+                
+                // After successfully joining a lobby
+                OnJoinedLobby?.Invoke(this, new LobbyEventArgs { 
+                    lobby = joinedLobby,
+                    PlayerId = AuthenticationService.Instance.PlayerId,
+                    PlayerName = playerName
+                });
+                
                 return true;
             }
             else
@@ -457,68 +476,6 @@ public class LobbyManager : MonoBehaviour
                 return false;
             }
         }
-        catch (Exception e)
-        {
-            Debug.LogError($"Failed to join lobby with relay: {e.Message}");
-            return false;
-        }
-    }
-
-    // Joining lobby via code input
-    public async Task<bool> JoinLobbyByCode(string lobbyCode)
-    {
-        try
-        {
-            JoinLobbyByCodeOptions joinLobbyByCodeOptions = new JoinLobbyByCodeOptions
-            {
-                Player = GetPlayer()
-            };
-
-            Lobby lobby = await LobbyService.Instance.JoinLobbyByCodeAsync(lobbyCode, joinLobbyByCodeOptions);
-            joinedLobby = lobby;
-
-            // Output that joined lobby
-            Debug.Log("Joined lobby with code" + lobbyCode);
-
-            // Output player count
-            PrintPlayers(joinedLobby);
-
-            // save this lobby as last joined lobby for
-            PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
-            PlayerPrefs.Save();
-            
-            // Retrieve host connection details from lobby metadata
-            if (joinedLobby.Data.TryGetValue("HostIP", out DataObject hostIPData) &&
-                joinedLobby.Data.TryGetValue("HostPort", out DataObject hostPortData))
-            {
-                string hostIP = hostIPData.Value;
-                int hostPort = int.Parse(hostPortData.Value);
-
-                Debug.Log($"Joining lobby with Host IP: {hostIP}, Port: {hostPort}");
-
-                // Configure NetworkManager to connect to host IP and port
-                var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-                if (transport != null)
-                {
-                    transport.SetConnectionData(hostIP, (ushort)hostPort);  // ✅ Use hostIP from lobby!
-                    Debug.Log($"Client connecting to: {hostIP}:{hostPort}");
-                }
-            }
-
-            // Start as client
-            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
-            {
-                bool success = NetworkManager.Singleton.StartClient();
-                if (!success)
-                {
-                    Debug.LogError("Failed to start as client!");
-                    return false;
-                }
-                Debug.Log("Started as network client");
-            }
-            
-            return true;
-        }
         catch (LobbyServiceException e)
         {
             Debug.Log(e);
@@ -526,40 +483,7 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
-    private void HandleJoinedLobby(object sender, LobbyEventArgs e)
-    {
-        Debug.Log($"Player joined lobby: {e.PlayerName}");
-        
-        // Register the player at lobby level (ping tracking only, no client ID yet)
-        RegisterPlayer(e.PlayerId);
-        
-        // Note: We deliberately don't map client IDs here, as the network
-        // connection might not be established yet
-    }
-
-    // Get player data
-    private Player GetPlayer()
-    {
-        return new Player
-        {
-            Data = new Dictionary<string, PlayerDataObject>
-            {
-                { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, playerName)}
-            }
-        };
-    }
-
-    // Output players in a specific lobby
-    private void PrintPlayers(Lobby lobby)
-    {
-        Debug.Log("Players in lobby " + lobby.Name);
-        foreach (Player player in lobby.Players)
-        {
-            Debug.Log(player.Id + " " + player.Data["PlayerName"].Value);
-        }
-    }
-
-    // Leaving lobby
+    // Leaving lobby (as client)
     public async Task<bool> LeaveLobby()
     {
         try
@@ -577,10 +501,6 @@ public class LobbyManager : MonoBehaviour
                     await LobbyService.Instance.RemovePlayerAsync(joinedLobby.Id, AuthenticationService.Instance.PlayerId);
                     Debug.Log("Left lobby: " + joinedLobby.Name);
                 }
-
-                playerPings.Remove(playerId);
-                playerClientIds.Remove(playerId);
-                Debug.Log($"Removed player {playerId} from mappings");
 
                 joinedLobby = null;
                 hostLobby = null;
@@ -628,48 +548,49 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
-    // Get list of player names from current lobby
-    public List<string> GetPlayerNames()
+
+
+    // PLAYER MANAGEMENT //
+    // Local setter for the player name
+    public void SetPlayerName(string name)
     {
-        List<string> names = new List<string>();
-        Lobby currentLobby = hostLobby ?? joinedLobby;
-
-        if (currentLobby == null)
-        {
-            Debug.LogWarning("GetPlayerNames: No active lobby found.");
-            return names;
-        }
-
-        if (currentLobby.Players == null)
-        {
-            Debug.LogWarning("GetPlayerNames: Lobby exists but Players list is null.");
-            return names;
-        }
-
-    foreach (Player player in currentLobby.Players)
-    {
-        if (player == null)
-        {
-            Debug.LogWarning("GetPlayerNames: Found a null player in the lobby.");
-            continue;
-        }
-
-        if (player.Data == null)
-        {
-            Debug.LogWarning($"GetPlayerNames: Player {player.Id} has null Data.");
-            continue;
-        }
-
-        if (!player.Data.ContainsKey("PlayerName"))
-        {
-            Debug.LogWarning($"GetPlayerNames: Player {player.Id} is missing PlayerName data.");
-            continue;
-        }
-
-        names.Add(player.Data["PlayerName"].Value);
+        playerName = name;
     }
 
-        return names;
+    // Check if player in lobby (true)
+    private bool IsPlayerInLobby(Lobby lobby = null) {
+        lobby = lobby ?? joinedLobby; // Use provided lobby or default to joinedLobby
+        
+        if (lobby != null && lobby.Players != null) {
+            foreach (Player player in lobby.Players) {
+                if (player.Id == AuthenticationService.Instance.PlayerId) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Get new player data
+    private Player GetPlayer()
+    {
+        return new Player
+        {
+            Data = new Dictionary<string, PlayerDataObject>
+            {
+                { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, playerName)}
+            }
+        };
+    }
+
+    // Output players in a specific lobby
+    private void PrintPlayers(Lobby lobby)
+    {
+        Debug.Log("Players in lobby " + lobby.Name);
+        foreach (Player player in lobby.Players)
+        {
+            Debug.Log(player.Id + " " + player.Data["PlayerName"].Value);
+        }
     }
 
     // Get player count in current lobby
@@ -686,141 +607,103 @@ public class LobbyManager : MonoBehaviour
         
         return 0;
     }
-    // Update ping for a player
-    public void UpdatePlayerPing(string playerId, float ping)
-    {
-        playerPings[playerId] = ping;
-    }
 
-    // Get ping for a player by player ID
-    public float GetPlayerPing(string playerId)
-    {
-        if (playerPings.TryGetValue(playerId, out float ping))
-        {
-            return ping;
-        }
-        return 0f;
-    }
-
-    public void MapPlayerIdToClientId(string playerId, ulong clientId)
-    {
-        if (string.IsNullOrEmpty(playerId))
-        {
-            Debug.LogError($"Attempted to map null/empty PlayerID to ClientID: {clientId}");
-            return;
-        }
-
-        // Check if this player ID is already mapped to this client ID
-        if (playerClientIds.TryGetValue(playerId, out ulong existingClientId) && existingClientId == clientId)
-        {
-            Debug.Log($"PlayerID: {playerId} is already mapped to ClientID: {clientId}. Skipping duplicate mapping.");
-            return;
-        }
-        
-        // Remove any existing mappings for this client ID if it's a different player
-        string existingPlayerId = GetPlayerIdByClientId(clientId);
-        if (existingPlayerId != null && existingPlayerId != playerId)
-        {
-            playerClientIds.Remove(existingPlayerId);
-            Debug.Log($"Removed existing mapping for ClientID {clientId} (was mapped to {existingPlayerId}) due to new mapping for PlayerID: {playerId}");
-        }
-        
-        // Add or update the new mapping
-        playerClientIds[playerId] = clientId;
-        Debug.Log($"Mapped PlayerID: {playerId} -> ClientID: {clientId}");
-    }
-
-
-    public string GetPlayerIdByClientId(ulong clientId)
-    {
-        foreach (var kvp in playerClientIds)
-        {
-            if (kvp.Value == clientId)
-            {
-                return kvp.Key;
-            }
-        }
-        return null;
-    }
-
-    // Get ping by client ID (used in game)
-    public string GetPlayerPingByClientId(ulong clientId)
-    {
-        foreach (var kvp in playerClientIds)
-        {
-            if (kvp.Value == clientId)
-            {
-                return kvp.Key;
-            }
-        }
-        return null;
-    }
-
-    // Call this when players join lobby
-    public void RegisterPlayer(string playerId = null, ulong clientId = 0)
-    {
-        // Default to local player if no ID provided
-        if (string.IsNullOrEmpty(playerId))
-        {
-            playerId = AuthenticationService.Instance.PlayerId;
-        }
-
-        Debug.Log($"RegisterPlayer called for PlayerID: {playerId}, ClientID: {clientId}");
-
-        
-        // Track ping for this player if not already tracked
-        if (!playerPings.ContainsKey(playerId))
-        {
-            playerPings[playerId] = 0;
-            Debug.Log($"Added player {playerId} to ping tracking");
-        }
-        
-        // Map client ID if provided and valid
-        if (clientId != 0)
-        {
-            MapPlayerIdToClientId(playerId, clientId);
-        }
-    }
-
-    public void UnRegisterPlayer(ulong clientId)
-    {
-        string playerId = GetPlayerIdByClientId(clientId);
-        if (playerId != null)
-        {
-            playerPings.Remove(playerId);
-            playerClientIds.Remove(playerId);
-            Debug.Log($"Unregistered player {playerId} with ClientId {clientId}");
-        }
-    }
-
-
-
-    // RPCS //
     [ServerRpc(RequireOwnership = false)]
-    private void NotifyHostAboutPlayerMapping_ServerRpc(string playerId, ServerRpcParams rpcParams = default)
+    public void UpdateReadyStatusServerRpc(string playerId, bool isReady)
     {
-        // Get the sender's client ID from the RPC parameters
-        ulong sendingClientId = rpcParams.Receive.SenderClientId;
-        
-        Debug.Log($"Server RPC received from client {sendingClientId} for player {playerId}");
-        
-        // Map the player ID to the client ID
-        MapPlayerIdToClientId(playerId, sendingClientId);
-        Debug.Log($"Host received player mapping: PlayerID: {playerId} -> ClientID: {sendingClientId}");
-        
-        // Broadcast the mapping to all clients
-        NotifyAllClientsAboutMapping_ClientRpc(playerId, sendingClientId);
+        // Ensure this is only executed on the server
+        if (!NetworkManager.Singleton.IsServer)
+        {
+            Debug.LogError("[ServerRpc] UpdateReadyStatusServerRpc called on a non-server instance!");
+            return;
+        }
+
+        // Update the server's authoritative ready status
+        if (playerReadyStatus.ContainsKey(playerId))
+        {
+            playerReadyStatus[playerId] = isReady;
+        }
+        else
+        {
+            playerReadyStatus.Add(playerId, isReady);
+        }
+
+        Debug.Log($"[Server] Updated ready status for player {playerId}: {isReady}");
+
+        // Notify all clients about the updated ready status
+        UpdateReadyStatusClientRpc(playerId, isReady);
     }
 
-    // Update this method to avoid resetting clientId unnecessarily
     [ClientRpc]
-    private void NotifyAllClientsAboutMapping_ClientRpc(string playerId, ulong clientId)
+    private void UpdateReadyStatusClientRpc(string playerId, bool isReady)
     {
-        // Skip if we're the host since we already have this mapping
-        if (IsHost) return;
+        // Ensure this is only executed on clients
+        if (NetworkManager.Singleton.IsServer)
+        {
+            Debug.Log("[ClientRpc] UpdateReadyStatusClientRpc called on the server. Ignoring...");
+            return;
+        }
+
+
+        // Update the ready status on all clients
+        if (playerReadyStatus.ContainsKey(playerId))
+        {
+            playerReadyStatus[playerId] = isReady;
+        }
+        else
+        {
+            playerReadyStatus.Add(playerId, isReady);
+        }
+
+        Debug.Log($"[Client] Updated ready status for player {playerId}: {isReady}");
+
+        // Update the UI for the player list
+        MenuUIManager.Instance.UpdatePlayerList();
+    }
+
+
+    // Check if all players are ready
+    public bool AreAllPlayersReady()
+    {
+        if (CurrentLobby == null || CurrentLobby.Players == null)
+        {
+            Debug.LogWarning("No lobby or players found to check ready status.");
+            return false;
+        }
+
+        Debug.Log("Checking if all players are ready...");
+        Debug.Log("Current player ready statuses:");
+        foreach (var kvp in playerReadyStatus)
+        {
+            Debug.Log($"Player {kvp.Key}: Ready = {kvp.Value}");
+        }
+
+        foreach (var player in CurrentLobby.Players)
+        {
+            Debug.Log($"Checking player {player.Id}...");
+            if (!playerReadyStatus.TryGetValue(player.Id, out bool isReady) || !isReady)
+            {
+                Debug.Log($"Player {player.Id} is not ready.");
+                return false; // If any player is not ready, return false
+            }
+        }
+
+        Debug.Log("All players are ready!");
+        return true; // All players are ready
+    }
+
+
+
+    // CLEANUP //
+    private void OnDestroy()
+    {
+        // Unsubscribe from events
+        OnJoinedLobby -= HandleJoinedLobby;
         
-        // Add the mapping on all clients
-        MapPlayerIdToClientId(playerId, clientId);
-        Debug.Log($"Client received player mapping: PlayerID: {playerId} -> ClientID: {clientId}");
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback -= HandleClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= HandleClientDisconnected;
+        }
     }
 }
