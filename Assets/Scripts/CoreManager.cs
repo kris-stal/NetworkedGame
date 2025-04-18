@@ -108,7 +108,7 @@ public class CoreManager : MonoBehaviour
     {
         if (isNetworkInitialized) return true; // If already initialized, exit
 
-        // 1️⃣ Check if NetworkManager.Singleton already exists
+        // Check if NetworkManager.Singleton already exists
         if (NetworkManager.Singleton != null)
         {
             Debug.Log("NetworkManager singleton already exists.");
@@ -118,7 +118,7 @@ public class CoreManager : MonoBehaviour
             return true;
         }
 
-        // 2️⃣ Check if a NetworkManager exists in the scene using a tag
+        // Check if a NetworkManager exists in the scene using a tag
         GameObject existingNetworkManager = GameObject.FindGameObjectWithTag("NetworkManager");
         if (existingNetworkManager != null)
         {
@@ -136,7 +136,7 @@ public class CoreManager : MonoBehaviour
             return true;
         }
 
-        // 3️⃣ If no existing instance, instantiate from prefab
+        // If no existing instance, instantiate from prefab
         if (networkManagerPrefab != null)
         {
             GameObject networkManagerObject = Instantiate(networkManagerPrefab);
@@ -155,7 +155,7 @@ public class CoreManager : MonoBehaviour
             return true;
         }
 
-        // 4️⃣ No prefab assigned, so fail
+        // No prefab assigned, so fail
         Debug.LogError("NetworkManager prefab not assigned in inspector!");
         return false;
     }
@@ -165,42 +165,20 @@ public class CoreManager : MonoBehaviour
     // MANAGER INITIALIZATION
     public void InitializeManagerInstances()
     {
-        // Always find Lobby Manager which is persistent between scenes.
-        if (lobbyManagerInstance == null)
-        {
-            // First, try finding using the singleton or by tag
-            lobbyManagerInstance = LobbyManager.Instance ?? GameObject.FindGameObjectWithTag("LobbyManager")?.GetComponent<LobbyManager>();
+        // Always find the scripts which are persistent between scenes.
+            lobbyManagerInstance = GetOrInstantiateManager(
+                lobbyManagerInstance,
+                "LobbyManager", 
+                lobbyManagerPrefab,
+                "LobbyManager could not be found or instantiated!"
+                );
 
-            // If not found, instantiate from prefab
-            if (lobbyManagerInstance == null && lobbyManagerPrefab != null)
-            {
-                GameObject lobbyManagerObject = Instantiate(lobbyManagerPrefab);
-                lobbyManagerInstance = lobbyManagerObject.GetComponent<LobbyManager>();
-                DontDestroyOnLoad(lobbyManagerObject); // Ensure it persists across scenes
-                Debug.Log("LobbyManager instantiated from prefab.");
-            }
-
-            // If still null after checking all methods, log an error
-            if (lobbyManagerInstance == null) Debug.LogError("LobbyManager not found!");
-        }
-
-        if (pingManagerInstance == null)
-        {
-            // First, try finding using the singleton or by tag
-            pingManagerInstance = PingManager.Instance ?? GameObject.FindGameObjectWithTag("PingManager")?.GetComponent<PingManager>();
-
-            // If not found, instantiate from prefab
-            if (pingManagerInstance == null && pingManagerPrefab != null)
-            {
-                GameObject pingManagerObject = Instantiate(pingManagerPrefab);
-                lobbyManagerInstance = pingManagerObject.GetComponent<LobbyManager>();
-                DontDestroyOnLoad(pingManagerObject); // Ensure it persists across scenes
-                Debug.Log("PingManager instantiated from prefab.");
-            }
-
-            // If still null after checking all methods, log an error
-            if (pingManagerInstance == null) Debug.LogError("PingManager not found!");
-        }
+            pingManagerInstance = GetOrInstantiateManager(
+                pingManagerInstance,
+                "PingManager", 
+                pingManagerPrefab,
+                "PingManager could not be found or instantiated!"
+                );
 
 
         // Check current scene
@@ -211,71 +189,70 @@ public class CoreManager : MonoBehaviour
         if (currentScene == "LobbyMenu")
         {
             // Find MenuManager and MenuUIManager, checking by tag and prefab instantiation
-            if (menuManagerInstance == null)
-            {
-                menuManagerInstance = MenuManager.Instance ?? GameObject.FindGameObjectWithTag("MenuManager")?.GetComponent<MenuManager>();
+            menuManagerInstance = GetOrInstantiateManager(
+                menuManagerInstance,
+                "MenuManager", // Tag assigned to the GameObject
+                menuManagerPrefab, // Prefab to instantiate if not found
+                "MenuManager could not be found or instantiated!"
+                );
 
-                // Instantiate from prefab if not found
-                if (menuManagerInstance == null && menuManagerPrefab != null)
-                {
-                    GameObject menuManagerObject = Instantiate(menuManagerPrefab);
-                    menuManagerInstance = menuManagerObject.GetComponent<MenuManager>();
-                    Debug.Log("MenuManager instantiated from prefab.");
-                }
-
-                if (menuManagerInstance == null) Debug.LogError("MenuManager not found!");
-            }
-
-            if (menuUIManagerInstance == null)
-            {
-                menuUIManagerInstance = MenuUIManager.Instance ?? GameObject.FindGameObjectWithTag("MenuUIManager")?.GetComponent<MenuUIManager>();
-
-                // Instantiate from prefab if not found
-                if (menuUIManagerInstance == null && menuUIManagerPrefab != null)
-                {
-                    GameObject menuUIManagerObject = Instantiate(menuUIManagerPrefab);
-                    menuUIManagerInstance = menuUIManagerObject.GetComponent<MenuUIManager>();
-                    Debug.Log("MenuUIManager instantiated from prefab.");
-                }
-
-                if (menuUIManagerInstance == null) Debug.LogError("MenuUIManager not found!");
-            }
+            menuUIManagerInstance = GetOrInstantiateManager(
+                menuUIManagerInstance,
+                "MenuUIManager", 
+                menuUIManagerPrefab,
+                "MenuUIManager could not be found or instantiated!"
+                );
         }
+
+        
 
         // For Game scene
         else if (currentScene == "BallArena" || currentScene == "NetworkStressTest")
         {
             // Find GameManager and GameUIManager
-            if (gameManagerInstance == null)
-            {
-                gameManagerInstance = GameManager.Instance ?? GameObject.FindGameObjectWithTag("GameManager")?.GetComponent<GameManager>();
+            gameManagerInstance = GetOrInstantiateManager(
+                gameManagerInstance,
+                "GameManager", 
+                gameManagerPrefab, 
+                "GameManager could not be found or instantiated!"
+                );
 
-                // Instantiate from prefab if not found
-                if (gameManagerInstance == null && gameManagerPrefab != null)
-                {
-                    GameObject gameManagerObject = Instantiate(gameManagerPrefab);
-                    gameManagerInstance = gameManagerObject.GetComponent<GameManager>();
-                    Debug.Log("GameManager instantiated from prefab.");
-                }
-
-                if (gameManagerInstance == null) Debug.LogError("GameManager not found!");
-            }
-
-            if (gameUIManagerInstance == null)
-            {
-                gameUIManagerInstance = GameUIManager.Instance ?? GameObject.FindGameObjectWithTag("GameUIManager")?.GetComponent<GameUIManager>();
-
-                // Instantiate from prefab if not found
-                if (gameUIManagerInstance == null && gameUIManagerPrefab != null)
-                {
-                    GameObject gameUIManagerObject = Instantiate(gameUIManagerPrefab);
-                    gameUIManagerInstance = gameUIManagerObject.GetComponent<GameUIManager>();
-                    Debug.Log("GameUIManager instantiated from prefab.");
-                }
-
-                if (gameUIManagerInstance == null) Debug.LogError("GameUIManager not found!");
-            }
+            gameUIManagerInstance = GetOrInstantiateManager(
+                gameUIManagerInstance,
+                "GameUIManager", 
+                gameUIManagerPrefab, 
+                "GameUIManager could not be found or instantiated!"
+                );
         }
+    }
+
+    // Helper for handling manager scripts
+    private T GetOrInstantiateManager<T>(
+        T existingInstance,
+        string tag,
+        GameObject prefab,
+        string errorMessage) where T : MonoBehaviour
+    {
+        if (existingInstance != null)
+            return existingInstance;
+
+        T instance = GameObject.FindGameObjectWithTag(tag)?.GetComponent<T>();
+
+        if (instance == null && prefab != null)
+        {
+            GameObject obj = Instantiate(prefab);
+            instance = obj.GetComponent<T>();
+            DontDestroyOnLoad(obj);
+            Debug.Log($"{typeof(T).Name} instantiated from prefab.");
+        }
+
+        if (instance == null)
+        {
+            Debug.LogError(errorMessage);
+            throw new System.Exception(errorMessage); // Throw an exception to prevent further issues
+        }
+
+        return instance;
     }
 
 

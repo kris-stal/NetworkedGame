@@ -146,7 +146,8 @@ public class MenuUIManager : MonoBehaviour
                 UpdatePlayerList();
             };
             
-            lobbyManagerInstance.OnLeftLobby += (sender, args) => {
+            lobbyManagerInstance.OnLeftLobby += (sender, args) =>
+            {
                 Debug.Log("Player left lobby - updating player list");
                 ClearPlayerList();
                 UpdatePlayerList();
@@ -305,7 +306,7 @@ public class MenuUIManager : MonoBehaviour
     }
 
     // Delete all displayed players in UI
-    private void ClearPlayerList()
+    public void ClearPlayerList()
     {
         foreach (GameObject item in instantiatedPlayerItems)
         {
@@ -317,92 +318,32 @@ public class MenuUIManager : MonoBehaviour
     // Update entire player list
     public void UpdatePlayerList()
     {
-        Debug.Log("Current lobby players:");
+        Debug.Log("Updating player list...");
 
-        if (menuManagerInstance == null || lobbyManagerInstance == null) 
+        if (menuManagerInstance == null || lobbyManagerInstance == null)
         {
             Debug.LogWarning("UpdatePlayerList: Missing manager instances");
             return;
         }
 
         Lobby currentLobby = lobbyManagerInstance.CurrentLobby;
-        if (currentLobby != null && currentLobby.Players != null)
+        if (currentLobby == null || currentLobby.Players == null)
         {
-            foreach (var player in currentLobby.Players)
-            {
-                string playerName = player.Data.ContainsKey("PlayerName") ? player.Data["PlayerName"].Value : "Unknown";
-                Debug.Log($"  Player ID: {player.Id}, Name: {playerName}");
-            }
-        }
-
-        // Log before clearing
-        Debug.Log($"UpdatePlayerList: Clearing {instantiatedPlayerItems.Count} existing player items");
-        
-        // Get current lobby
-        if (currentLobby == null)
-        {
-            Debug.LogWarning("UpdatePlayerList: No active lobby found");
-            return;
-        }
-        
-        if (currentLobby.Players == null)
-        {
-            Debug.LogWarning("UpdatePlayerList: Lobby Players list is null");
+            Debug.LogWarning("UpdatePlayerList: No active lobby or players found");
             return;
         }
 
-        // Clear current player list
+        // Clear the current player list
         ClearPlayerList();
-        
-        // Track processed player IDs to avoid duplicates
-        HashSet<string> processedPlayerIds = new HashSet<string>();
-        
-        // Populate player list with actual Player objects
+
+        // Rebuild the player list
         foreach (Player player in currentLobby.Players)
         {
-            if (player == null)
-            {
-                Debug.LogWarning("UpdatePlayerList: Found null player entry");
-                continue;
-            }
-            
-            if (string.IsNullOrEmpty(player.Id))
-            {
-                Debug.LogWarning("UpdatePlayerList: Found player with null/empty ID");
-                continue;
-            }
-            
-            // Skip if we've already processed this player
-            if (processedPlayerIds.Contains(player.Id))
-            {
-                Debug.LogWarning($"UpdatePlayerList: Skipping duplicate player {player.Id}");
-                continue;
-            }
-                
-            processedPlayerIds.Add(player.Id);
-            
-            // Debug output before creating UI element
-            if (player.Data != null && player.Data.ContainsKey("PlayerName"))
-            {
-                Debug.Log($"Creating UI for player: {player.Id} - {player.Data["PlayerName"].Value}");
-            }
-            else
-            {
-                Debug.LogWarning($"Player {player.Id} is missing name data");
-            }
-            
-            GameObject playerItem = CreatePlayerListItem(player);
-            // Update the ready status UI
-            PlayerListItem item = playerItem.GetComponent<PlayerListItem>();
-            if (item != null && lobbyManagerInstance.playerReadyStatus.TryGetValue(player.Id, out bool isReady))
-            {
-                item.SetReadyStatus(isReady);
-            }
+            CreatePlayerListItem(player);
         }
-        
-        Debug.Log($"UpdatePlayerList: Created {processedPlayerIds.Count} player items");
-    }
 
+        Debug.Log("Player list updated.");
+    }
 
     public void UpdatePlayerReadyStatus(string playerId, bool isReady)
     {
@@ -412,6 +353,47 @@ public class MenuUIManager : MonoBehaviour
             if (item != null && item.PlayerId == playerId)
             {
                 item.SetReadyStatus(isReady);
+            }
+        }
+    }
+
+    public void RemovePlayerFromUI(string playerId)
+    {
+        Debug.Log($"Removing player {playerId} from UI...");
+
+        // Find the player item in the list
+        GameObject playerItemToRemove = null;
+        foreach (var playerItemObject in instantiatedPlayerItems)
+        {
+            PlayerListItem item = playerItemObject.GetComponent<PlayerListItem>();
+            if (item != null && item.PlayerId == playerId)
+            {
+                playerItemToRemove = playerItemObject;
+                break;
+            }
+        }
+
+        // If found, remove it from the list and destroy the GameObject
+        if (playerItemToRemove != null)
+        {
+            instantiatedPlayerItems.Remove(playerItemToRemove);
+            Destroy(playerItemToRemove);
+            Debug.Log($"Player {playerId} removed from UI.");
+        }
+        else
+        {
+            Debug.LogWarning($"Player {playerId} not found in UI.");
+        }
+    }
+
+    public void ShowAllReadyButtons()
+    {
+        foreach (var playerItemObject in instantiatedPlayerItems)
+        {
+            PlayerListItem item = playerItemObject.GetComponent<PlayerListItem>();
+            if (item != null)
+            {
+                item.ShowReadyButton();
             }
         }
     }
@@ -449,15 +431,18 @@ public class MenuUIManager : MonoBehaviour
 
         usernameText.text = playerName;
     }
-    
+        
     public void ShowLobbyScreen()
     {
         signinUI.SetActive(false);
         mainMenuUI.SetActive(false);
         lobbyUI.SetActive(true);
-        
+
         UpdateLobbyUI();
         UpdatePlayerList();
+
+        // Show all ready buttons
+        ShowAllReadyButtons();
     }
 
 

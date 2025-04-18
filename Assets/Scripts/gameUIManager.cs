@@ -3,6 +3,7 @@ using Unity.Netcode;
 using TMPro;
 using UnityEngine.UI;
 using Unity.Multiplayer.Tools.NetStatsMonitor;
+using Unity.Services.Authentication;
 
 // Manager for handling in game UI
 // Handles player ping, score, countdown and tab menu
@@ -14,9 +15,13 @@ public class GameUIManager : MonoBehaviour
 
     // Reference other scripts
     private CoreManager coreManagerInstance;
+    private LobbyManager lobbyManagerInstance;
     private GameManager gameManagerInstance;
+    
 
-    // UI elements references
+
+    // UI ELEMENTS //
+    // Game UI 
     [SerializeField] private GameObject gameUI;
     [SerializeField] private TextMeshProUGUI player1ScoreText;
     [SerializeField] private TextMeshProUGUI player2ScoreText;
@@ -87,8 +92,12 @@ public class GameUIManager : MonoBehaviour
 
         // Assign manager instances
         coreManagerInstance = CoreManager.Instance;
+        lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
         gameManagerInstance = coreManagerInstance.gameManagerInstance;
-        
+
+        // Populate the player list when the game starts
+        PopulatePlayerList();
+
         // Add listener to new game button
         if (newGameButton != null)
         {
@@ -100,44 +109,33 @@ public class GameUIManager : MonoBehaviour
     {
         if (gameManagerInstance == null || NetworkManager.Singleton == null) return;
 
-        // Get all player objects
-        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        // Update the ping UI
+        UpdatePingUI();
 
-        // Update ping display for each player
-        for (int i = 0; i < players.Length && i < pingTexts.Length; i++)
+        // Handle other UI updates (e.g., scores, menus)
+        player1ScoreText.text = gameManagerInstance.GetPlayer1Score().ToString();
+        player2ScoreText.text = gameManagerInstance.GetPlayer2Score().ToString();
+
+        // Handle menu and tab menu visibility
+        if ((!menuUI.gameObject.activeSelf) && Input.GetKeyDown(KeyCode.Escape))
         {
-            ulong clientId = gameManagerInstance.GetPlayerClientId(players[i]);
-            float ping = gameManagerInstance.GetPlayerPing(clientId);
-            
-            // Update the UI text
-            pingTexts[i].text = $"Player {i+1} Ping: {ping:0}ms";
+            menuUI.gameObject.SetActive(true);
+        }
+        else if (menuUI.gameObject.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+        {
+            menuUI.gameObject.SetActive(false);
         }
 
-        
-        if ((!menuUI.gameObject.activeSelf) && Input.GetKeyDown(KeyCode.Escape)) // If menu ui isnt already up and player presses escape
-        {
-            menuUI.gameObject.SetActive(true); // show menu ui
-        }
-        else if (menuUI.gameObject.activeSelf && Input.GetKeyDown(KeyCode.Escape)) // if menu ui is already up and player presses escape
-        {
-            menuUI.gameObject.SetActive(false); // hide menu ui 
-        }
-
-        // Show Tab Menu while Tab is held
         if (Input.GetKey(KeyCode.Tab))
         {
-            tabMenuUI.gameObject.SetActive(true); // show tab menu while holding Tab
+            tabMenuUI.gameObject.SetActive(true);
             networkMonitor.Visible = true;
         }
         else
         {
-            tabMenuUI.gameObject.SetActive(false); // hide tab menu when Tab is released
+            tabMenuUI.gameObject.SetActive(false);
             networkMonitor.Visible = false;
         }
-
-        // Handle Score UI
-        player1ScoreText.text = gameManagerInstance.GetPlayer1Score().ToString();
-        player2ScoreText.text = gameManagerInstance.GetPlayer2Score().ToString();
     }
 
 
@@ -182,7 +180,83 @@ public class GameUIManager : MonoBehaviour
         }
     }
 
-    // Ping screen management
+    public void ClearPlayerList()
+    {
+        foreach (Transform child in playerListContent)
+        {
+            Destroy(child.gameObject);
+        }
+    }
+
+    // Ping MANAGEMENT //
+    public void UpdatePingUI()
+    {
+        if (PingManager.Instance == null) return;
+
+        foreach (var playerPing in PingManager.Instance.playerPing)
+        {
+            string playerId = playerPing.Key;
+            float ping = playerPing.Value;
+
+            // Update the ping UI for each player
+            foreach (var playerItemObject in playerListContent.GetComponentsInChildren<PlayerListItem>())
+            {
+                if (playerItemObject == null || playerItemObject.gameObject == null)
+                {
+                    // Skip if the object is null or destroyed
+                    continue;
+                }
+
+                if (playerItemObject.PlayerId == playerId)
+                {
+                    playerItemObject.UpdatePing(ping);
+                }
+            }
+        }
+    }
+
+    public void UpdatePlayerPing(string playerId, float ping)
+    {
+        foreach (var playerItemObject in playerListContent.GetComponentsInChildren<PlayerListItem>())
+        {
+            PlayerListItem item = playerItemObject.GetComponent<PlayerListItem>();
+            if (item != null && item.PlayerId == playerId)
+            {
+                item.UpdatePing(ping);
+            }
+        }
+    }
+
+    public void PopulatePlayerList()
+    {
+        if (lobbyManagerInstance == null || playerListContent == null) return;
+
+        // Clear the existing player list
+        ClearPlayerList();
+
+        foreach (var player in lobbyManagerInstance.CurrentLobby.Players)
+        {
+            GameObject playerItem = Instantiate(playerListItemPrefab, playerListContent);
+            PlayerListItem item = playerItem.GetComponent<PlayerListItem>();
+            if (item != null)
+            {
+                string playerName = player.Data["PlayerName"].Value;
+                string playerId = player.Id;
+                bool isLocalPlayer = playerId == AuthenticationService.Instance.PlayerId;
+
+                item.Initialize(playerName, playerId, isLocalPlayer);
+            }
+        }
+    }
+
+    public void HideAllReadyButtons()
+    {
+        foreach (var playerItemObject in playerListContent.GetComponentsInChildren<PlayerListItem>())
+        {
+            playerItemObject.HideReadyButton();
+        }
+    }
+
     public void toggleHighPingWarning(bool isActive)
     {
         if (highPingWarningText.gameObject.activeSelf != isActive)

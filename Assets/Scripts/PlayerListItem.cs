@@ -53,6 +53,24 @@ public class PlayerListItem : MonoBehaviour
     }
 
 
+    // UI //
+    public void ShowReadyButton()
+    {
+        if (readyButton != null)
+        {
+            readyButton.gameObject.SetActive(true);
+        }
+    }
+    
+    public void HideReadyButton()
+    {
+        if (readyButton != null)
+        {
+            readyButton.gameObject.SetActive(false);
+        }
+    }
+
+
 
     // READY //
     public void toggleReady()
@@ -102,25 +120,21 @@ public class PlayerListItem : MonoBehaviour
             this.PlayerId == lobbyManagerInstance.HostPlayerId)
         {
             playerPingText.text = "HOST";
-            // Optionally, assign a special color for the host
             playerPingText.color = Color.cyan;
             return;
         }
-        
+
         // Otherwise, update and display the ping value
-        float pingMs = ping * 1000f;
-        if (pingMs < 1f) // Ensure a minimal display value if ping is very low
-        {
-            pingMs = 1f;
-        }
-        playerPingText.text = $"{pingMs:F0} ms";
-        
-        // Optionally, adjust the color based on the ping value:
-        if (pingMs > 100f)
+        if (ping < 1f) ping = 1f; // Ensure a minimum display value
+
+        playerPingText.text = $"{ping:F0} ms";
+
+        // Adjust the color based on the ping value
+        if (ping > 100f)
         {
             playerPingText.color = Color.red;
         }
-        else if (pingMs > 50f)
+        else if (ping > 50f)
         {
             playerPingText.color = Color.yellow;
         }

@@ -12,14 +12,15 @@ public class PingManager : NetworkBehaviour
     // Reference other scripts
     private CoreManager coreManagerInstance;
     private MenuUIManager menuUIManagerInstance;
+    private GameUIManager gameUIManagerInstance;
 
-
-    
-    // Mapping from player id to ping (in seconds or milliseconds)
+    // Mapping from player id to ping (in milliseconds)
     public Dictionary<string, float> playerPing = new Dictionary<string, float>();
 
-    private void Awake() {
-        if (Instance != null && Instance != this) {
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
             Destroy(gameObject);
             return;
         }
@@ -32,6 +33,7 @@ public class PingManager : NetworkBehaviour
         // Assign script references
         coreManagerInstance = CoreManager.Instance;
         menuUIManagerInstance = coreManagerInstance.menuUIManagerInstance;
+        gameUIManagerInstance = coreManagerInstance.gameUIManagerInstance;
     }
 
     public override void OnNetworkSpawn()
@@ -47,51 +49,66 @@ public class PingManager : NetworkBehaviour
     {
         while (true)
         {
-            float sendTimestamp = Time.realtimeSinceStartup;
-            string playerId = Unity.Services.Authentication.AuthenticationService.Instance.PlayerId;
-            // Send our ping request to the server
-            SendPingServerRpc(sendTimestamp, playerId);
+            if (NetworkManager.Singleton.IsClient)
+            {
+                float sendTime = Time.realtimeSinceStartup;
+                string playerId = AuthenticationService.Instance.PlayerId;
 
-            // Wait three seconds before sending the next ping request
+                // Send the ping request to the server
+                RequestPingServerRpc(sendTime, playerId);
+            }
+
+            // Wait for 2 seconds before sending the next ping
             yield return new WaitForSeconds(2f);
         }
     }
 
-    // Called periodically from the client to send a ping request.
     [ServerRpc(RequireOwnership = false)]
-    public void SendPingServerRpc(float sendTime, string playerId)
+    public void RequestPingServerRpc(float sendTime, string playerId, ServerRpcParams rpcParams = default)
     {
-        // Immediately reply; this method runs on the server.
-        RespondPingClientRpc(sendTime, playerId);
-    }
-    
-    // This RPC goes to all clients, or can be targeted to just the sender.
-    [ClientRpc]
-    public void RespondPingClientRpc(float sendTime, string playerId)
-    {
-        // Calculate ping if this is the local client that initiated the ping.
-        if (AuthenticationService.Instance.PlayerId == playerId) {
-            float ping = Time.realtimeSinceStartup - sendTime;
-            // Optionally, show the ping to the local UI immediately.
-            // Also, send the value back to the server to update the global mapping.
-            SendPingValueServerRpc(ping, playerId);
-        }
-    }
+        // Calculate the round-trip time (RTT) on the server
+        float currentTime = Time.realtimeSinceStartup;
+        float ping = (currentTime - sendTime) * 1000f; // Convert to milliseconds
 
-    [ServerRpc(RequireOwnership = false)]
-    public void SendPingValueServerRpc(float ping, string playerId)
-    {
-        // Update the server’s dictionary for this player's ping value.
-        playerPing[playerId] = ping;
-        // Broadcast the updated ping to all clients (so all UIs can update)
+        // Update the server's ping dictionary
+        if (playerPing.ContainsKey(playerId))
+        {
+            playerPing[playerId] = ping;
+        }
+        else
+        {
+            playerPing.Add(playerId, ping);
+        }
+
+        Debug.Log($"[Server] Calculated ping for player {playerId}: {ping} ms");
+
+        // Broadcast the updated ping to all clients
         UpdatePlayerPingClientRpc(playerId, ping);
     }
-    
+
     [ClientRpc]
     public void UpdatePlayerPingClientRpc(string playerId, float ping)
     {
-        // For example, if you manage your player list UI centrally, notify it to update
-        // the ping text for the player whose ID is "playerId".
-        menuUIManagerInstance?.UpdatePlayerPing(playerId, ping);
+        Debug.Log($"[ClientRpc] Updating ping for player {playerId}: {ping} ms");
+
+        // Update the ping dictionary on the client
+        if (playerPing.ContainsKey(playerId))
+        {
+            playerPing[playerId] = ping;
+        }
+        else
+        {
+            playerPing.Add(playerId, ping);
+        }
+
+        // Update the ping UI
+        if (menuUIManagerInstance != null && menuUIManagerInstance.gameObject.activeSelf)
+        {
+            menuUIManagerInstance.UpdatePlayerPing(playerId, ping);
+        }
+        else if (gameUIManagerInstance != null && gameUIManagerInstance.gameObject.activeSelf)
+        {
+            gameUIManagerInstance.UpdatePlayerPing(playerId, ping);
+        }
     }
 }

@@ -151,6 +151,14 @@ public class LobbyManager : NetworkBehaviour
     {
         Debug.Log($"Client disconnected: {clientId}");
 
+        // If the host disconnected, notify all clients
+        if (clientId == NetworkManager.ServerClientId)
+        {
+            Debug.Log("Host has disconnected. Notifying clients...");
+            NotifyLobbyDeletedClientRpc();
+            return;
+        }
+
         // If this is the local client, check if we were kicked from the lobby
         if (clientId == NetworkManager.Singleton.LocalClientId && joinedLobby != null)
         {
@@ -158,7 +166,7 @@ public class LobbyManager : NetworkBehaviour
             {
                 // Check if we're still in the lobby
                 Lobby currentLobbyState = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id);
-                
+
                 if (!IsPlayerInLobby(currentLobbyState))
                 {
                     Debug.Log("Kicked from Lobby!");
@@ -175,6 +183,8 @@ public class LobbyManager : NetworkBehaviour
             }
         }
     }
+
+
 
     // Update lobby data with a delay
     private IEnumerator UpdateLobbyAndNotifyUI()
@@ -328,73 +338,51 @@ public class LobbyManager : NetworkBehaviour
             return new List<Lobby>();
         }
     }
-    
+        
     public async Task<bool> JoinLobbyById(string lobbyId)
     {
         try
         {
-            // Join the lobby
+            // Join the lobby using the provided ID
             JoinLobbyByIdOptions joinLobbyByIdOptions = new JoinLobbyByIdOptions
             {
                 Player = GetPlayer()
             };
 
-            // (LOBBY SERVICE) Join the lobby
-            Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, joinLobbyByIdOptions);
-            this.joinedLobby = joinedLobby;
+            Lobby lobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, joinLobbyByIdOptions);
+            joinedLobby = lobby;
 
             Debug.Log($"Successfully joined lobby as {playerName}");
 
-            // (RELAY) Get the relay join code from the lobby data
-            if (joinedLobby.Data.TryGetValue("RelayJoinCode", out DataObject relayJoinCodeData))
+            // Use the helper method to configure Relay for the client
+            bool relayConfigured = await ConfigureRelayForClient(joinedLobby.Data);
+            if (!relayConfigured)
             {
-                string joinCode = relayJoinCodeData.Value;
-                Debug.Log($"Retrieved relay join code: {joinCode}");
-
-                // (RELAY) Join the relay with the join code
-                JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
-                
-                // (NGO) Set up the transport with the relay data
-                var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-                if (transport != null)
-                {
-                    var relayServerData = AllocationUtils.ToRelayServerData(joinAllocation, "dtls");
-                    transport.SetRelayServerData(relayServerData);
-                    
-                    Debug.Log("Configured transport with relay data, connecting as client...");
-                }
-                else
-                {
-                    Debug.LogError("Transport component not found on NetworkManager!");
-                    return false;
-                }
-
-                // (NGO) Start the client
-                if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
-                {
-                    bool success = NetworkManager.Singleton.StartClient();
-                    if (!success)
-                    {
-                        Debug.LogError("Failed to start as client!");
-                        return false;
-                    }
-                    Debug.Log("Started as network client through Relay");
-                }
-
-                 // After successfully joining a lobby, notify UI
-                OnJoinedLobby?.Invoke(this, new LobbyEventArgs { 
-                    lobby = joinedLobby,
-                    PlayerId = AuthenticationService.Instance.PlayerId,
-                    PlayerName = playerName
-                });
-
-                return true;
-            }
-            else
-            {
-                Debug.LogError("Failed to find relay join code in lobby data");
+                Debug.LogError("Failed to configure Relay for the client.");
                 return false;
             }
+
+            // Start the client
+            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+            {
+                bool success = NetworkManager.Singleton.StartClient();
+                if (!success)
+                {
+                    Debug.LogError("Failed to start as client!");
+                    return false;
+                }
+                Debug.Log("Started as network client through Relay");
+            }
+
+            // After successfully joining a lobby, notify UI
+            OnJoinedLobby?.Invoke(this, new LobbyEventArgs
+            {
+                lobby = joinedLobby,
+                PlayerId = AuthenticationService.Instance.PlayerId,
+                PlayerName = playerName
+            });
+
+            return true;
         }
         catch (Exception e)
         {
@@ -403,10 +391,12 @@ public class LobbyManager : NetworkBehaviour
         }
     }
 
-   public async Task<bool> JoinLobbyByCode(string lobbyCode)
+
+    public async Task<bool> JoinLobbyByCode(string lobbyCode)
     {
         try
         {
+            // Join the lobby using the provided code
             JoinLobbyByCodeOptions joinLobbyByCodeOptions = new JoinLobbyByCodeOptions
             {
                 Player = GetPlayer()
@@ -415,70 +405,79 @@ public class LobbyManager : NetworkBehaviour
             Lobby lobby = await LobbyService.Instance.JoinLobbyByCodeAsync(lobbyCode, joinLobbyByCodeOptions);
             joinedLobby = lobby;
 
-            // Output that joined lobby
+            // Output that the lobby was joined
             Debug.Log("Joined lobby with code " + lobbyCode);
 
             // Output player count
             PrintPlayers(joinedLobby);
 
-            // Save this lobby as last joined lobby
+            // Save this lobby as the last joined lobby
             PlayerPrefs.SetString("LastJoinedLobby", lobby.Id);
             PlayerPrefs.Save();
-            
-            // Get the relay join code from the lobby data
-            if (joinedLobby.Data.TryGetValue("RelayJoinCode", out DataObject relayJoinCodeData))
-            {
-                string joinCode = relayJoinCodeData.Value;
-                Debug.Log($"Retrieved relay join code: {joinCode}");
 
-                // Join the relay with the join code
-                JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
-                
-                // Set up the transport with the relay data
-                var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-                if (transport != null)
+            // Use the helper method to configure Relay for the client
+            bool relayConfigured = await ConfigureRelayForClient(joinedLobby.Data);
+            if (!relayConfigured)
+            {
+                Debug.LogError("Failed to configure Relay for the client.");
+                return false;
+            }
+
+            // Start the client
+            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
+            {
+                bool success = NetworkManager.Singleton.StartClient();
+                if (!success)
                 {
-                    var relayServerData = AllocationUtils.ToRelayServerData(joinAllocation, "dtls");
-                    transport.SetRelayServerData(relayServerData);
-                    
-                    Debug.Log("Configured transport with relay data, connecting as client...");
-                }
-                else
-                {
-                    Debug.LogError("Transport component not found on NetworkManager!");
+                    Debug.LogError("Failed to start as client!");
                     return false;
                 }
+                Debug.Log("Started as network client through Relay");
+            }
 
-                // Start the client
-                if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsListening)
-                {
-                    bool success = NetworkManager.Singleton.StartClient();
-                    if (!success)
-                    {
-                        Debug.LogError("Failed to start as client!");
-                        return false;
-                    }
-                    Debug.Log("Started as network client through Relay");
-                }
-                
-                // After successfully joining a lobby
-                OnJoinedLobby?.Invoke(this, new LobbyEventArgs { 
-                    lobby = joinedLobby,
-                    PlayerId = AuthenticationService.Instance.PlayerId,
-                    PlayerName = playerName
-                });
-                
+            // After successfully joining a lobby
+            OnJoinedLobby?.Invoke(this, new LobbyEventArgs
+            {
+                lobby = joinedLobby,
+                PlayerId = AuthenticationService.Instance.PlayerId,
+                PlayerName = playerName
+            });
+
+            return true;
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"Failed to join lobby by code: {e.Message}");
+            return false;
+        }
+    }
+
+    // Helper to join relay as client
+    private async Task<bool> ConfigureRelayForClient(Dictionary<string, DataObject> lobbyData)
+    {
+        if (lobbyData.TryGetValue("RelayJoinCode", out DataObject relayJoinCodeData))
+        {
+            string joinCode = relayJoinCodeData.Value;
+            Debug.Log($"Retrieved relay join code: {joinCode}");
+
+            JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
+            var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+            if (transport != null)
+            {
+                var relayServerData = AllocationUtils.ToRelayServerData(joinAllocation, "dtls");
+                transport.SetRelayServerData(relayServerData);
+                Debug.Log("Configured transport with relay data, connecting as client...");
                 return true;
             }
             else
             {
-                Debug.LogError("Failed to find relay join code in lobby data");
+                Debug.LogError("Transport component not found on NetworkManager!");
                 return false;
             }
         }
-        catch (LobbyServiceException e)
+        else
         {
-            Debug.Log(e);
+            Debug.LogError("Failed to find relay join code in lobby data");
             return false;
         }
     }
@@ -492,13 +491,17 @@ public class LobbyManager : NetworkBehaviour
             {
                 string playerId = AuthenticationService.Instance.PlayerId;
 
-                if (IsHost) 
+                if (IsHost)
                 {
-                    await DeleteLobby(); // If host, delete lobby before leaving
+                    await DeleteLobby(); // If host, delete the lobby before leaving
                 }
                 else
                 {
-                    await LobbyService.Instance.RemovePlayerAsync(joinedLobby.Id, AuthenticationService.Instance.PlayerId);
+                    // Notify the host that this player is leaving
+                    NotifyPlayerLeftServerRpc(playerId);
+
+                    // Remove the player from the lobby
+                    await LobbyService.Instance.RemovePlayerAsync(joinedLobby.Id, playerId);
                     Debug.Log("Left lobby: " + joinedLobby.Name);
                 }
 
@@ -511,7 +514,13 @@ public class LobbyManager : NetworkBehaviour
                     NetworkManager.Singleton.Shutdown();
                     Debug.Log("Network shutdown");
                 }
-                
+
+                // Clear the player list
+                menuUIManagerInstance?.ClearPlayerList();
+
+                // Notify UI that the player has left
+                OnLeftLobby?.Invoke(this, EventArgs.Empty);
+
                 return true;
             }
             return false;
@@ -521,6 +530,44 @@ public class LobbyManager : NetworkBehaviour
             Debug.LogError("Failed to leave lobby: " + e.Message);
             return false;
         }
+    }
+
+
+    [ServerRpc(RequireOwnership = false)]
+    private void NotifyPlayerLeftServerRpc(string playerId)
+    {
+        if (!NetworkManager.Singleton.IsServer)
+        {
+            Debug.LogError("[ServerRpc] NotifyPlayerLeftServerRpc called on a non-server instance!");
+            return;
+        }
+
+        Debug.Log($"Player {playerId} has left the lobby.");
+
+        // Remove the player from the ready status dictionary
+        if (playerReadyStatus.ContainsKey(playerId))
+        {
+            playerReadyStatus.Remove(playerId);
+        }
+
+        // Refresh the lobby data
+        if (joinedLobby != null)
+        {
+            joinedLobby.Players.RemoveAll(player => player.Id == playerId);
+        }
+
+        // Notify all clients to update their UI
+        NotifyPlayerLeftClientRpc(playerId);
+    }
+
+
+    [ClientRpc]
+    private void NotifyPlayerLeftClientRpc(string playerId)
+    {
+        Debug.Log($"[ClientRpc] Player {playerId} has left the lobby.");
+
+        // Remove the specific player's UI element
+        menuUIManagerInstance?.RemovePlayerFromUI(playerId);
     }
 
     // Method to delete the lobby (only host can call this)
@@ -534,11 +581,19 @@ public class LobbyManager : NetworkBehaviour
 
         try
         {
+            // Notify all clients that the lobby is being deleted
+            NotifyLobbyDeletedClientRpc();
+
+            // Delete the lobby
             await LobbyService.Instance.DeleteLobbyAsync(hostLobby.Id);
             Debug.Log("Lobby deleted: " + hostLobby.Name);
 
             hostLobby = null;
             joinedLobby = null;
+
+            // Clear the player list
+            menuUIManagerInstance?.ClearPlayerList();
+
             return true;
         }
         catch (LobbyServiceException e)
@@ -547,6 +602,27 @@ public class LobbyManager : NetworkBehaviour
             return false;
         }
     }
+
+    [ClientRpc]
+    private void NotifyLobbyDeletedClientRpc()
+    {
+        Debug.Log("[ClientRpc] Lobby has been deleted by the host.");
+
+        // Notify the UI to leave the lobby
+        menuUIManagerInstance?.ShowMainMenuScreen();
+
+        // Clear the lobby data
+        joinedLobby = null;
+
+        // Shut down the network connection
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+        {
+            NetworkManager.Singleton.Shutdown();
+            Debug.Log("Network shutdown after lobby deletion.");
+        }
+    }
+
+
 
 
 

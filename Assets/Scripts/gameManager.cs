@@ -98,12 +98,8 @@ public class GameManager : NetworkBehaviour
     }
 
     // Other network variables
-    private float pingUpdateInterval = 3f; // How often ping update is carried out
-    private float timeSinceLastPingUpdate = 0f; // Timer for ping update
-    private Dictionary<ulong, float> playerPings = new Dictionary<ulong, float>(); // Player pings dictionary
 
     private Dictionary<ulong, string> playerIds = new Dictionary<ulong, string>(); // Maps NetworkObject IDs to Auth IDs
-    public float lastPing = -5f;
     
 
     // Game Variables
@@ -174,31 +170,6 @@ public class GameManager : NetworkBehaviour
     // Called every frame
     private void Update()
     {
-        // Update ping values periodically
-        timeSinceLastPingUpdate += Time.deltaTime;
-        if (timeSinceLastPingUpdate >= pingUpdateInterval)
-        {
-            timeSinceLastPingUpdate = 0f;
-            UpdatePingValues();
-
-            // Check for unstable connection
-            if (IsClient && !IsServer)
-            {
-                float myPing = GetPlayerPing(NetworkManager.Singleton.LocalClientId);
-
-                if (Mathf.Abs(myPing - lastPing) >= 10)
-                {
-                lastPing = myPing;
-
-                gameUIManagerInstance.changeResolution(myPing);
-
-                bool isHighPing = myPing > 50f;
-                gameUIManagerInstance.toggleHighPingWarning(isHighPing);
-                }
-            }
-        }
-        
-
         // Handle countdown timer on server
         if (IsServer && countdownTimer.Value > 0)
         {
@@ -280,7 +251,10 @@ public class GameManager : NetworkBehaviour
     private void StartGameClientRpc()
     {
         Debug.Log("Game started!");
-        
+
+        // Hide all ready buttons
+        gameUIManagerInstance?.HideAllReadyButtons();
+
         // Enable player controllers - now using PlayerNetwork
         foreach (GameObject player in playerObjects)
         {
@@ -443,11 +417,14 @@ public class GameManager : NetworkBehaviour
                     NetworkObject playerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
                     if (playerObject.IsOwner)
                     {
-                        RequestDespawnServerRpc(playerObject);// Despawn on network
+                        RequestDespawnServerRpc(playerObject); // Despawn on network
                     }
 
                     // Disconnect
                     NetworkManager.Singleton.Shutdown();
+
+                    // Clear the player list
+                    GameUIManager.Instance?.ClearPlayerList();
 
                     // Load lobby scene again
                     SceneManager.LoadScene("LobbyMenu");
@@ -455,6 +432,7 @@ public class GameManager : NetworkBehaviour
             }
         }
     }
+
 
     // Despawn player object
     [ServerRpc(RequireOwnership = false)]
@@ -572,84 +550,6 @@ public class GameManager : NetworkBehaviour
 
 
     // PING FUNCTIONALITY //
-    // Updating player's ping
-    private void UpdatePingValues()
-    {
-        if (!NetworkManager.Singleton.IsListening) return;
-        
-        // For the server: get RTT for all connected clients
-        if (IsServer)
-        {
-            foreach (ulong clientId in NetworkManager.Singleton.ConnectedClientsIds)
-            {
-                if (clientId != NetworkManager.Singleton.LocalClientId) // Skip server itself
-                {
-                    try
-                    {
-                        // Access RTT through NetworkManager's transport layer
-                        float rtt = NetworkManager.Singleton.NetworkConfig.NetworkTransport.GetCurrentRtt(clientId);
-                        playerPings[clientId] = rtt;
-                        
-                        // Broadcast updated ping to all clients
-                        UpdatePingClientRpc(clientId, rtt);
-                    }
-                    catch (System.Exception e)
-                    {
-                        Debug.LogWarning($"Error getting RTT for client {clientId}: {e.Message}");
-                    }
-                }
-            }
-        }
-
-        // For clients: request their ping from the server
-        if (IsClient && !IsServer)
-        {
-            RequestPingServerRpc();
-        }
-    }
-
-    // Client calls this to request their ping from server
-    [ServerRpc(RequireOwnership = false)]
-    private void RequestPingServerRpc(ServerRpcParams serverRpcParams = default)
-    {
-        ulong clientId = serverRpcParams.Receive.SenderClientId;
-        try
-        {
-            float rtt = NetworkManager.Singleton.NetworkConfig.NetworkTransport.GetCurrentRtt(clientId);
-            playerPings[clientId] = rtt;
-            
-            // Send ping value directly back to the requesting client
-            UpdatePingClientRpc(clientId, rtt, new ClientRpcParams
-            {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = new ulong[] { clientId }
-                }
-            });
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"Error getting RTT for client {clientId}: {e.Message}");
-        }
-    }
-
-    // Client calls this to update their ping display
-    [ClientRpc]
-    private void UpdatePingClientRpc(ulong clientId, float pingValue, ClientRpcParams clientRpcParams = default)
-    {
-        playerPings[clientId] = pingValue;
-    }
-
-    // Get player ping
-    public float GetPlayerPing(ulong clientId)
-    {
-        if (playerPings.TryGetValue(clientId, out float ping))
-        {
-            return ping;
-        }
-        return 0f;
-    }
-
     // Helper method to get the client ID of a player GameObject
     public ulong GetPlayerClientId(GameObject playerObject)
     {

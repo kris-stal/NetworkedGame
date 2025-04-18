@@ -14,6 +14,7 @@ public class MenuManager : NetworkBehaviour
 
     // Reference other scripts
     private CoreManager coreManagerInstance;
+    private PingManager pingManagerInstance;
     private MenuUIManager menuUIManagerInstance;
     private LobbyManager lobbyManagerInstance;
     
@@ -39,6 +40,7 @@ public class MenuManager : NetworkBehaviour
     {
         // Assign script references
         coreManagerInstance = CoreManager.Instance;
+        pingManagerInstance = coreManagerInstance.pingManagerInstance;
         menuUIManagerInstance = coreManagerInstance.menuUIManagerInstance;
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
 
@@ -131,11 +133,24 @@ public class MenuManager : NetworkBehaviour
     [ServerRpc(RequireOwnership = false)]
     public void StartGameServerRpc()
     {
-        if (!NetworkManager.Singleton.IsHost) return;  // Only the host can load the scene
+        if (!NetworkManager.Singleton.IsHost) return;
 
         Debug.Log("Host is loading BallArena scene...");
         NetworkManager.Singleton.SceneManager.LoadScene("BallArena", LoadSceneMode.Single);
+
+        // Ensure PingManager is active
+        if (PingManager.Instance == null)
+        {
+            Debug.LogError("PingManager is not active in the game scene!");
+        }
+
+        // Ensure GameUIManager is ready
+        if (GameUIManager.Instance != null)
+        {
+            GameUIManager.Instance.PopulatePlayerList();
+        }
     }
+
 
     // Launch network stress test
     public void StartStressTest()
