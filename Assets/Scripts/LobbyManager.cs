@@ -41,6 +41,7 @@ public class LobbyManager : NetworkBehaviour
     public string LobbyName => CurrentLobby?.Name ?? "";
     public string LobbyCode => CurrentLobby?.LobbyCode ?? "";
     public Dictionary<string, bool> playerReadyStatus = new Dictionary<string, bool>();
+    public bool WasDisconnected { get; set; } = false;
 
     // Events
     public event EventHandler OnLeftLobby;

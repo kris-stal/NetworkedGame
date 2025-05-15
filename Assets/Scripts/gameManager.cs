@@ -3,6 +3,9 @@ using Unity.Netcode;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
 using System.IO;
+using System;
+using System.Collections;
+using Unity.Services.Authentication;
 
 // Manager for game functionality
 // Handles game start, countdown timers, player pings, scoring
@@ -16,6 +19,8 @@ public class GameManager : NetworkBehaviour
     private CoreManager coreManagerInstance;
     private GameUIManager gameUIManagerInstance;
     private LobbyManager lobbyManagerInstance;
+    private ReconnectManager reconnectManagerInstance;
+
 
 
 
@@ -60,46 +65,12 @@ public class GameManager : NetworkBehaviour
     );
 
     
-    // Game and player state variables
-    [System.Serializable] // Class to store state of game
-    public class GameState
-    {
-        // Game State
-        public float gameTime;
-        public bool gameInProgress;
-        public bool gameOver;
-        public ulong winnerClientId;
-        public float countdownValue;
 
-        // Player States
-        public List<PlayerState> players = new List<PlayerState>();
-
-        // Ball State
-        public Vector3 ballPosition;
-        public Vector3 ballVelocity;
-        public Vector3 ballAngularVelocity;
-
-        // Timestamp
-        public System.DateTime timestamp;
-    }
-
-    // Player States
-    [System.Serializable]
-    public class PlayerState
-    {
-        public string authId;
-        public ulong clientId;
-        public Vector3 position;
-        public Vector3 velocity;
-        public Vector3 angularVelocity;
-        public int score;
-        public bool isConnected;
-        public float disconnectTime;
-    }
 
     // Other network variables
 
     private Dictionary<ulong, string> playerIds = new Dictionary<ulong, string>(); // Maps NetworkObject IDs to Auth IDs
+
     
 
     // Game Variables
@@ -152,6 +123,7 @@ public class GameManager : NetworkBehaviour
         coreManagerInstance = CoreManager.Instance;
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
         gameUIManagerInstance = coreManagerInstance.gameUIManagerInstance;
+        reconnectManagerInstance = coreManagerInstance.reconnectManagerInstance;
 
         // Set Spawn Positions
         playerSpawnPos.Add(new Vector3(-5, 1, 0)); // spawn pos 1
@@ -159,6 +131,7 @@ public class GameManager : NetworkBehaviour
         Debug.Log(playerSpawnPos.Count); // Output num of spawn pos for testing
 
         onLoadArena();
+    
 
         // Call RPC only if the object is spawned and we are the server
         if (IsServer && IsSpawned)
@@ -231,7 +204,7 @@ public class GameManager : NetworkBehaviour
         if (theBall != null && theBall.TryGetComponent<Rigidbody>(out Rigidbody rb))
         {
             rb.isKinematic = false;
-            rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
+            rb.AddForce(new Vector3(UnityEngine.Random.Range(-1f, 1f), 0, UnityEngine.Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
         }
 
         // Enable player controllers - now using PlayerNetwork
@@ -389,7 +362,7 @@ public class GameManager : NetworkBehaviour
                 rb.angularVelocity = Vector3.zero;
                 
                 // Apply random force
-                rb.AddForce(new Vector3(Random.Range(-1f, 1f), 0, Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
+                rb.AddForce(new Vector3(UnityEngine.Random.Range(-1f, 1f), 0, UnityEngine.Random.Range(-1f, 1f)).normalized * 10f, ForceMode.Impulse);
             }
             
             // Notify clients
@@ -560,88 +533,39 @@ public class GameManager : NetworkBehaviour
         return 0;
     }
 
-
-
-    // GAME STATE //
-    private void SaveGameStateLocally(GameState state)
+    [ServerRpc(RequireOwnership = false)]
+    public void RegisterPlayerAuthIdServerRpc(string authId, ServerRpcParams rpcParams = default)
     {
-        string json = JsonUtility.ToJson(state);
-        File.WriteAllText(TEMP_SAVE_PATH, json);
-        Debug.Log("Game state saved locally");
-    }
-
-    private GameState LoadGameStateLocally()
-    {
-        if(File.Exists(TEMP_SAVE_PATH))
+        // Retrieve the sender's client ID from the ServerRpcParams
+        ulong clientId = rpcParams.Receive.SenderClientId;
+        
+        // Add or update the mapping for this client ID
+        if (playerIds.ContainsKey(clientId))
         {
-            string json = File.ReadAllText(TEMP_SAVE_PATH);
-            return JsonUtility.FromJson<GameState>(json); // Load from file
+            playerIds[clientId] = authId;
         }
-        return null;
-    }
-
-
-    private GameState CaptureGameState()
-    {
-        // Capture game state
-        GameState state = new GameState
+        else
         {
-            gameTime = Time.time,
-            gameInProgress = gameInProgress.Value,
-            gameOver = gameOver.Value,
-            winnerClientId = winnerClientId.Value,
-            countdownValue = countdownTimer.Value,
-            timestamp = System.DateTime.Now
-        };
-
-        // Capture player states
-        foreach (GameObject playerObj in playerObjects)
-        {
-            if (playerObj != null)
-            {
-                ulong clientId = playerObj.GetComponent<NetworkObject>().OwnerClientId;
-                
-                PlayerState playerState = new PlayerState
-                {
-                    clientId = clientId,
-                    authId = playerIds.TryGetValue(clientId, out string authId) ? authId : "unknown",
-                    position = playerObj.transform.position,
-                    isConnected = true,
-                    score = clientId == 1 ? playerScore1.Value : playerScore2.Value
-                };
-                
-                // Get velocity if available
-                if (playerObj.TryGetComponent<Rigidbody>(out Rigidbody rb))
-                {
-                    playerState.velocity = rb.linearVelocity;
-                    playerState.angularVelocity = rb.angularVelocity;
-                }
-                
-                state.players.Add(playerState);
-            }
-        }
-
-        // Capture ball state
-        if (theBall != null)
-        {
-            state.ballPosition = theBall.transform.position;
-            
-            if (theBall.TryGetComponent<Rigidbody>(out Rigidbody ballRb))
-            {
-                state.ballVelocity = ballRb.linearVelocity;
-                state.ballAngularVelocity = ballRb.angularVelocity;
-            }
+            playerIds.Add(clientId, authId);
         }
         
-        return state; // Return the captured state
+        Debug.Log($"Registered client {clientId} with authId {authId}");
     }
+
+
+
+
+
+
+
+
 
 
 
     // EVENT HANDLING //
     private async void OnClientDisconnect(ulong clientId)
     {
-        if (!IsServer) return; // Only server handles this
+        if (!IsServer) return; // Only the server handles this
 
         // Ignore host (server) disconnects
         if (clientId == NetworkManager.Singleton.LocalClientId)
@@ -649,10 +573,11 @@ public class GameManager : NetworkBehaviour
             Debug.Log("Host (server) is disconnecting, ending game");
             await lobbyManagerInstance.LeaveLobby(); // delete lobby
             NetworkManager.Singleton.Shutdown(); // end network connection
+            
             return;
         }
 
-        // Find player's auth ID
+        // Find player's authId using your existing dictionary
         if (!playerIds.TryGetValue(clientId, out string authId))
         {
             Debug.LogError($"Could not find authId for disconnected client {clientId}");
@@ -660,11 +585,30 @@ public class GameManager : NetworkBehaviour
         }
 
         Debug.Log($"Player {clientId} with authId {authId} disconnected");
+        lobbyManagerInstance.WasDisconnected = true;
 
-        // Capture the full game state
-        GameState gameState = CaptureGameState();
-        SaveGameStateLocally(gameState);
+        // Record the disconnect in the persistent ReconnectManager.
+        reconnectManagerInstance.RecordDisconnect(authId);
+
+        // Optionally capture & store the current game state so it can be restored
+        var gameState = reconnectManagerInstance.CaptureGameState();
+        // (If you want to immediately persist it, you might call an exposed SaveGameState method – or let ReconnectManager handle it internally)
+
+        // Instead of immediately ending the game, you can delay calling EndGameServerRpc 
+        // until the grace period expires (this can be done inside ReconnectManager).
     }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void EndGameServerRpc()
+    {
+        if (!NetworkManager.Singleton.IsHost) return;
+
+        Debug.Log("Host is loading LobbyMenu scene...");
+        NetworkManager.Singleton.SceneManager.LoadScene("LobbyMenu", LoadSceneMode.Single);
+    }
+
+
+
 
     private void OnClientConnect(ulong clientId)
     {

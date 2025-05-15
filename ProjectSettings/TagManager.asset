@@ -15,6 +15,7 @@ TagManager:
   - GameUIManager
   - GameManager
   - PingManager
+  - ReconnectManager
   layers:
   - Default
   - TransparentFX

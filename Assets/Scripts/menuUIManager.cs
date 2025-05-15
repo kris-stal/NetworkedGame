@@ -18,6 +18,7 @@ public class MenuUIManager : MonoBehaviour
     private CoreManager coreManagerInstance;
     private MenuManager menuManagerInstance;
     private LobbyManager lobbyManagerInstance;
+    private ReconnectManager reconnectManagerInstance;
 
 
 
@@ -48,6 +49,10 @@ public class MenuUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI playerCountText;
     [SerializeField] private Transform playerListContent;
     [SerializeField] private GameObject playerListItemPrefab;
+
+    [SerializeField] private GameObject reconnectionPanel;
+    [SerializeField] private Button reconnectButton;
+    [SerializeField] private TextMeshProUGUI reconnectLobbyText;
     
 
 
@@ -76,6 +81,8 @@ public class MenuUIManager : MonoBehaviour
 
         // Show sign in screen by default
         ShowSigninScreen();
+        reconnectionPanel.SetActive(false);
+        reconnectButton.onClick.AddListener(OnReconnectButtonClicked);
     }
 
 
@@ -86,6 +93,7 @@ public class MenuUIManager : MonoBehaviour
         coreManagerInstance = CoreManager.Instance;
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
         menuManagerInstance = coreManagerInstance.menuManagerInstance;
+        reconnectManagerInstance = coreManagerInstance.reconnectManagerInstance;
 
         // Check if unity services initialized (should be true from CoreManager)
         bool isUnityServiceInitialized = await coreManagerInstance.InitializeUnityServices();
@@ -122,6 +130,18 @@ public class MenuUIManager : MonoBehaviour
         else 
         {
             Debug.LogError("Unity Services not initialized");
+        }
+
+        // If we detect that we were disconnected and now in the lobby,
+        // update the reconnection UI.
+        if (lobbyManagerInstance.WasDisconnected)
+        {
+            // Here, lobbyManagerInstance should already contain the lobby information.
+            if (lobbyManagerInstance != null)
+            {
+                // Update the reconnect panel text immediately, before any button click.
+                UpdateReconnectionUI(lobbyManagerInstance.LobbyName);
+            }
         }
 
 
@@ -396,6 +416,38 @@ public class MenuUIManager : MonoBehaviour
                 item.ShowReadyButton();
             }
         }
+    }
+
+
+
+    // RECONNECTION UI //
+    // Call this method when you detect a disconnect
+    public void ShowReconnectionPanel()
+    {
+        reconnectionPanel.SetActive(true);
+    }
+
+    private void OnReconnectButtonClicked()
+    {
+        // Hide the reconnection panel.
+        reconnectionPanel.SetActive(false);
+
+        // Trigger the RPC call to attempt a reconnection.
+        // This uses the persistent ReconnectManager so the logic will run even if other scene-specific managers (like GameManager) are not present
+        reconnectManagerInstance.ReconnectToGameServerRpc(AuthenticationService.Instance.PlayerId);
+    }
+
+    public void UpdateReconnectionUI(string lobbyName)
+    {
+        if (reconnectLobbyText != null)
+        {
+            reconnectLobbyText.text = $"Reconnect to {lobbyName}";
+        }
+        
+        // Optionally update other lobby details here (like lobby code, player count, etc.)
+        
+        // Show the reconnection panel.
+        reconnectionPanel.SetActive(true);
     }
 
 

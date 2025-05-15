@@ -21,6 +21,7 @@ public class CoreManager : MonoBehaviour
     public GameManager gameManagerInstance { get; private set; }
     public GameUIManager gameUIManagerInstance { get; private set; }
     public PingManager pingManagerInstance { get; private set; }
+    public ReconnectManager reconnectManagerInstance { get; private set; }
 
 
 
@@ -33,6 +34,7 @@ public class CoreManager : MonoBehaviour
     [SerializeField] private GameObject gameManagerPrefab;
     [SerializeField] private GameObject gameUIManagerPrefab;
     [SerializeField] private GameObject pingManagerPrefab;
+    [SerializeField] private GameObject reconnectManagerPrefab;
     
 
 
@@ -178,6 +180,13 @@ public class CoreManager : MonoBehaviour
                 "PingManager", 
                 pingManagerPrefab,
                 "PingManager could not be found or instantiated!"
+                );
+
+            reconnectManagerInstance = GetOrInstantiateManager(
+                reconnectManagerInstance,
+                "ReconnectManager", 
+                reconnectManagerPrefab,
+                "ReconnectManager could not be found or instantiated!"
                 );
 
 

@@ -15,8 +15,10 @@ public class MenuManager : NetworkBehaviour
     // Reference other scripts
     private CoreManager coreManagerInstance;
     private PingManager pingManagerInstance;
-    private MenuUIManager menuUIManagerInstance;
     private LobbyManager lobbyManagerInstance;
+    private MenuUIManager menuUIManagerInstance;
+    private GameUIManager gameUIManagerInstance;
+
     
 
     // Awake is ran when script is created - before Start
@@ -43,6 +45,7 @@ public class MenuManager : NetworkBehaviour
         pingManagerInstance = coreManagerInstance.pingManagerInstance;
         menuUIManagerInstance = coreManagerInstance.menuUIManagerInstance;
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
+        gameUIManagerInstance = coreManagerInstance.gameUIManagerInstance;
 
         // Always show sign-in screen first
         menuUIManagerInstance.ShowSigninScreen();
@@ -55,7 +58,7 @@ public class MenuManager : NetworkBehaviour
     {
     try
         {
-            bool isInitialized = await CoreManager.Instance.InitializeUnityServices(playerName);
+            bool isInitialized = await coreManagerInstance.InitializeUnityServices(playerName);
             if (!isInitialized)
             {
                 Debug.LogError("Authentication aborted: Unity Services failed to initialize.");
@@ -139,15 +142,15 @@ public class MenuManager : NetworkBehaviour
         NetworkManager.Singleton.SceneManager.LoadScene("BallArena", LoadSceneMode.Single);
 
         // Ensure PingManager is active
-        if (PingManager.Instance == null)
+        if (pingManagerInstance == null)
         {
             Debug.LogError("PingManager is not active in the game scene!");
         }
 
         // Ensure GameUIManager is ready
-        if (GameUIManager.Instance != null)
+        if (gameUIManagerInstance != null)
         {
-            GameUIManager.Instance.PopulatePlayerList();
+            gameUIManagerInstance.PopulatePlayerList();
         }
     }
 

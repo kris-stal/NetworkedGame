@@ -343,7 +343,7 @@ public class PlayerNetwork : NetworkBehaviour
             }
         }
 
-        // Send to all clients EXCEPT the owner using TargetClientIds (not NativeArray)
+        // Send to all clients EXCEPT the owner using TargetClientIds
         var clientRpcParams = new ClientRpcParams
         {
             Send = new ClientRpcSendParams
@@ -479,13 +479,6 @@ public class PlayerNetwork : NetworkBehaviour
         
         // Calculate the difference between predicted and actual position
         Vector3 posDifference = serverPos - transform.position;
-        
-        // // If difference is significant, apply correction smoothly
-        // if (posDifference.magnitude > 0.5f)
-        // {
-        //     // Smooth correction over time
-        //     StartCoroutine(SmoothCorrection(serverPos, serverVel));
-        // }
 
             // Only correct if the error exceeds the threshold AND
         // we're not in the middle of applying a previous correction
