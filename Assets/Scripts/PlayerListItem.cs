@@ -2,6 +2,7 @@ using TMPro;
 using Unity.Netcode;
 using Unity.Services.Authentication;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 // Manager for individual player items in UI list
@@ -43,6 +44,17 @@ public class PlayerListItem : MonoBehaviour
 
         // Enable or disable the ready button based on whether this is the local player
         this.readyButton.interactable = isLocalPlayer;
+
+            // Hide ready button if in game scene
+        if (SceneManager.GetActiveScene().name == "BallArena")
+        {
+            HideReadyButton();
+        }
+        else
+        {
+            this.readyButton.gameObject.SetActive(true);
+            this.readyButton.interactable = isLocalPlayer;
+        }
     }
 
 

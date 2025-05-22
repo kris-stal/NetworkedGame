@@ -6,6 +6,7 @@ using System.IO;
 using System;
 using System.Collections;
 using Unity.Services.Authentication;
+using Unity.Netcode.Components;
 
 // Manager for game functionality
 // Handles game start, countdown timers, player pings, scoring
@@ -46,7 +47,7 @@ public class GameManager : NetworkBehaviour
         NetworkVariableWritePermission.Server
     );
     
-    private NetworkVariable<bool> gameInProgress = new NetworkVariable<bool>(
+    public NetworkVariable<bool> gameInProgress = new NetworkVariable<bool>(
         false,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
@@ -75,12 +76,12 @@ public class GameManager : NetworkBehaviour
 
     // Game Variables
     GameObject theBall; // Get ball Game Object
-    private List<GameObject> playerObjects = new List<GameObject>(); // List of player Game Objects
+    public List<GameObject> playerObjects = new List<GameObject>(); // List of player Game Objects
     private List<Vector3> playerSpawnPos = new List<Vector3>(); // List of spawn positions for players
     private bool winnerScreenShown; // is winner screen shown
 
     // Constants
-    private const int WIN_SCORE = 10;
+    private const int WIN_SCORE = 3;
     private const float INITIAL_COUNTDOWN = 5f;
     private const float RESET_COUNTDOWN = 3f;
     private const string TEMP_SAVE_PATH = "gameState.json"; // Added constant for local save path
@@ -124,6 +125,7 @@ public class GameManager : NetworkBehaviour
         lobbyManagerInstance = coreManagerInstance.lobbyManagerInstance;
         gameUIManagerInstance = coreManagerInstance.gameUIManagerInstance;
         reconnectManagerInstance = coreManagerInstance.reconnectManagerInstance;
+        
 
         // Set Spawn Positions
         playerSpawnPos.Add(new Vector3(-5, 1, 0)); // spawn pos 1
@@ -176,9 +178,9 @@ public class GameManager : NetworkBehaviour
             }
             
             // Show winner when game is over
-            if (gameOver.Value && !winnerScreenShown)
+            if (gameOver.Value && !winnerScreenShown && IsHost)
             {
-                string winnerText = "Player " + (winnerClientId.Value == 1 ? "1" : "2") + " Wins!";
+                string winnerText = "Team " + (winnerClientId.Value == 1 ? "Red" : "Blue") + " Wins!";
                 gameUIManagerInstance.ShowWinnerScreen(winnerText);
                 winnerScreenShown = true;
             }
@@ -291,41 +293,76 @@ public class GameManager : NetworkBehaviour
     }
 
     // Reset Players RPC (Position + Velocity)
-    [ServerRpc]
-    private void ResetPlayersServerRpc()
+// Replace or modify your ResetPlayersServerRpc method with this:
+[ServerRpc]
+private void ResetPlayersServerRpc()
+{
+    if (!IsServer) return;
+
+    int playerCount = playerObjects.Count;
+    Debug.Log($"Resetting {playerCount} players");
+
+    // Reset positions and velocities of all players
+    for (int i = 0; i < playerCount && i < playerSpawnPos.Count; i++)
     {
-        if (!IsServer) return;
-
-        int playerCount = playerObjects.Count;
-        Debug.Log($"Resetting {playerCount} players");
-
-        // Reset positions and velocities of all players
-        for (int i = 0; i < playerCount && i < playerSpawnPos.Count; i++)
+        if (playerObjects[i] != null)
         {
-            if (playerObjects[i] != null)
+            // Reset position
+            playerObjects[i].transform.position = playerSpawnPos[i];
+            
+            // Get the NetworkObject component
+            NetworkObject netObj = playerObjects[i].GetComponent<NetworkObject>();
+            
+            // Get the rigidbody and reset it completely
+            if (playerObjects[i].TryGetComponent<Rigidbody>(out Rigidbody rb))
             {
-                // Reset position and velocity
-                playerObjects[i].transform.position = playerSpawnPos[i];
-                if (playerObjects[i].TryGetComponent<Rigidbody>(out Rigidbody rb))
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.Sleep(); // Important: puts the rigidbody to sleep to clear any physics state
+            }
+
+            // Force teleport for all NetworkTransform components
+            if (playerObjects[i].TryGetComponent<NetworkTransform>(out var netTransform))
+            {
+                netTransform.Teleport(playerSpawnPos[i], Quaternion.identity, playerObjects[i].transform.localScale);
+            }
+            
+            Debug.Log($"Reset player {i} to position {playerSpawnPos[i]}");
+        }
+    }
+    
+    // Notify all clients with a ClientRpc
+    ResetAllPlayersClientRpc();
+}
+
+// Add this new ClientRpc to ensure all clients reset
+[ClientRpc]
+private void ResetAllPlayersClientRpc()
+{
+    foreach (GameObject player in playerObjects)
+    {
+        // Find our local player
+        NetworkObject netObj = player.GetComponent<NetworkObject>();
+        if (netObj != null && netObj.IsLocalPlayer)
+        {
+            int playerIndex = playerObjects.IndexOf(player);
+            if (playerIndex >= 0 && playerIndex < playerSpawnPos.Count)
+            {
+                // Teleport method helps ensure position is updated
+                player.transform.position = playerSpawnPos[playerIndex];
+                
+                // Reset physics
+                if (player.TryGetComponent<Rigidbody>(out Rigidbody rb))
                 {
                     rb.linearVelocity = Vector3.zero;
                     rb.angularVelocity = Vector3.zero;
                 }
-                Debug.Log($"Reset player {i} to position {playerSpawnPos[i]}");
             }
         }
-        
-        // Notify clients
-        ResetPlayersClientRpc();
     }
+}
 
-    // Notify Players
-    [ClientRpc]
-    private void ResetPlayersClientRpc()
-    {
-        // Any client-side logic needed when players are reset
-        Debug.Log("Player positions reset on client");
-    }
+
 
     // Freeze ball and players during countdown
     private void FreezeBallAndPlayers()
@@ -442,10 +479,10 @@ public class GameManager : NetworkBehaviour
         gameInProgress.Value = false;
         winnerClientId.Value = winningPlayer;
         
-        Debug.Log("Game Over! Player " + winningPlayer + " wins!");
+        Debug.Log("Game Over! Team " + winningPlayer + " wins!");
     }
 
-    // Start a new game after someone has won
+        // Start a new game after someone has won
     public void StartNewGame()
     {
         if (!IsServer) return;
@@ -456,6 +493,19 @@ public class GameManager : NetworkBehaviour
         
         // Reset game state
         gameOver.Value = false;
+        winnerScreenShown = false;
+        
+        // Disable movement for all players during reset
+        foreach (GameObject player in playerObjects)
+        {
+            if (player != null && player.TryGetComponent<PlayerNetwork>(out PlayerNetwork controller))
+            {
+                controller.SetMovementEnabled(false);
+            }
+        }
+
+        ResetBallServerRpc();
+        ResetPlayersServerRpc();
         
         // Start initial countdown
         StartInitialCountdown();
@@ -519,8 +569,6 @@ public class GameManager : NetworkBehaviour
         // Reset and start countdown for next point
         StartResetCountdown();
     }
-    
-
 
     // PING FUNCTIONALITY //
     // Helper method to get the client ID of a player GameObject
@@ -532,6 +580,18 @@ public class GameManager : NetworkBehaviour
         }
         return 0;
     }
+
+    public void RegisterPlayer(GameObject player)
+{
+    if (!playerObjects.Contains(player))
+        playerObjects.Add(player);
+
+    if (gameInProgress.Value)
+    {
+        if (player.TryGetComponent<PlayerNetwork>(out var pn))
+            pn.SetMovementEnabled(true);
+    }
+}
 
     [ServerRpc(RequireOwnership = false)]
     public void RegisterPlayerAuthIdServerRpc(string authId, ServerRpcParams rpcParams = default)
@@ -551,6 +611,8 @@ public class GameManager : NetworkBehaviour
         
         Debug.Log($"Registered client {clientId} with authId {authId}");
     }
+    
+    
 
 
 
@@ -573,7 +635,7 @@ public class GameManager : NetworkBehaviour
             Debug.Log("Host (server) is disconnecting, ending game");
             await lobbyManagerInstance.LeaveLobby(); // delete lobby
             NetworkManager.Singleton.Shutdown(); // end network connection
-            
+
             return;
         }
 

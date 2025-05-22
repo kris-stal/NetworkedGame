@@ -1,4 +1,4 @@
-Library: C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
+Library: C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
 --platform=Windows
 --backend=burst-llvm-16
 --target=X64_SSE2
@@ -9,11 +9,11 @@ Library: C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burs
 --target-framework=NetFramework
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
---temp-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burst
+--temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
 --debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
---decode-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Library\Burst
---output=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
+--decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
+--output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
 --pdb-search-paths=Temp/ManagedSymbols/
 
 --method=Unity.Jobs.IJobParallelForExtensions+ParallelForJobStruct`1[[Unity.Collections.SortJob`2+SegmentSort[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[Unity.Collections.NativeSortExtension+DefaultComparer`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]], Unity.Collections, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]], Unity.Collections, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]], UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null::Execute(Unity.Collections.SortJob`2+SegmentSort[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[Unity.Collections.NativeSortExtension+DefaultComparer`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]], Unity.Collections, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]]&, Unity.Collections, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null|System.IntPtr, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089|System.IntPtr, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089|Unity.Jobs.LowLevel.Unsafe.JobRanges&, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null|System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089)--82ff8baa2abd920945d7abccccedb808
@@ -72,11 +72,11 @@ Library: C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burs
 --target-framework=NetFramework
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
---temp-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burst
+--temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
 --debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
---decode-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Library\Burst
---output=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
+--decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
+--output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
 --pdb-search-paths=Temp/ManagedSymbols/
 
 --method=Unity.Jobs.IJobParallelForExtensions+ParallelForJobStruct`1[[Unity.Collections.SortJob`2+SegmentSort[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[Unity.Collections.NativeSortExtension+DefaultComparer`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]], Unity.Collections, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]], Unity.Collections, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]], UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null::Execute(Unity.Collections.SortJob`2+SegmentSort[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[Unity.Collections.NativeSortExtension+DefaultComparer`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]], Unity.Collections, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]]&, Unity.Collections, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null|System.IntPtr, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089|System.IntPtr, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089|Unity.Jobs.LowLevel.Unsafe.JobRanges&, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null|System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089)--82ff8baa2abd920945d7abccccedb808
@@ -137,11 +137,11 @@ Library: C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burs
 --float-mode=Fast
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
---temp-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burst
+--temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
 --debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
---decode-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Library\Burst
---output=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
+--decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
+--output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
 --pdb-search-paths=Temp/ManagedSymbols/
 
 --method=Unity.Jobs.IJobForExtensions+ForJobStruct`1[[UnityEngine.Rendering.Universal.ZBinningJob, Unity.RenderPipelines.Universal.Runtime, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]], UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null::Execute(UnityEngine.Rendering.Universal.ZBinningJob&, Unity.RenderPipelines.Universal.Runtime, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null|System.IntPtr, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089|System.IntPtr, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089|Unity.Jobs.LowLevel.Unsafe.JobRanges&, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null|System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089)--77fc393cb521ac129b1392d4eb94d29a
@@ -158,11 +158,11 @@ Library: C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burs
 --float-mode=Fast
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
---temp-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burst
+--temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
 --debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
---decode-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Library\Burst
---output=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
+--decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
+--output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
 --pdb-search-paths=Temp/ManagedSymbols/
 
 --method=Unity.Jobs.IJobForExtensions+ForJobStruct`1[[UnityEngine.Rendering.Universal.ZBinningJob, Unity.RenderPipelines.Universal.Runtime, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]], UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null::Execute(UnityEngine.Rendering.Universal.ZBinningJob&, Unity.RenderPipelines.Universal.Runtime, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null|System.IntPtr, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089|System.IntPtr, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089|Unity.Jobs.LowLevel.Unsafe.JobRanges&, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null|System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089)--77fc393cb521ac129b1392d4eb94d29a
@@ -177,11 +177,11 @@ Library: C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burs
 --target-framework=NetFramework
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
---temp-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burst
+--temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
 --debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
---decode-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Library\Burst
---output=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
+--decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
+--output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
 --pdb-search-paths=Temp/ManagedSymbols/
 
 --method=Unity.Burst.BurstCompiler+BurstCompilerHelper, Unity.Burst, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null::IsBurstEnabled()--8c2be93e18276203cbd918daa2748a10
@@ -294,11 +294,11 @@ Library: C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burs
 --target-framework=NetFramework
 --linker-options=PdbAltPath="cs3ip_game_Data/Plugins/x86_64/lib_burst_generated.pdb"
 --generate-link-xml=Temp\burst.link.xml
---temp-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\Burst
+--temp-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\Burst
 --debug=Full
 --key-folder=C:/Program Files/Unity/Hub/Editor/6000.0.26f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport
---decode-folder=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Library\Burst
---output=C:\Users\kris\Desktop\uor_stuff\Computer Science Year 3\cs3ip\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
+--decode-folder=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Library\Burst
+--output=C:\Users\deco\Desktop\stuff\Unity\projects\cs3ip_game\Temp\BurstOutput\Data\Plugins\x86_64\lib_burst_generated
 --pdb-search-paths=Temp/ManagedSymbols/
 
 --method=Unity.Burst.BurstCompiler+BurstCompilerHelper, Unity.Burst, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null::IsBurstEnabled()--8c2be93e18276203cbd918daa2748a10
