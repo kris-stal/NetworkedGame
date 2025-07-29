@@ -1,6 +1,6 @@
 My final year project - please read the report in docs/Report.
 
-Abstract /n
+Abstract \n
 The rapid growth of the multiplayer gaming industry has sparked a significant demand for fair, robust 
 and scalable online experiences. However, real-time, physics-based games continue to endure 
 consequential technical challenges in delivering efficient synchronization, network resilience and 
